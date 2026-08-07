@@ -601,6 +601,8 @@ pub fn run() {
             start_audio_level_monitoring,
             stop_audio_level_monitoring,
             is_audio_level_monitoring,
+            // VAD provider diagnostics (Sherpa requests safely fall back until bundled)
+            audio::vad_provider::get_vad_engine_status,
             // Recording pause/resume commands
             audio::recording_commands::pause_recording,
             audio::recording_commands::resume_recording,

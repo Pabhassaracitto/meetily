@@ -42,3 +42,7 @@ Mỗi transcript được lưu từ live capture, import, retranscription hoặc
 ## Quality profiles đang triển khai
 
 Import và retranscription có các profile `balanced_batch`, `high_accuracy_postprocess` và `long_form_study`. Profile chỉ điều chỉnh VAD pause bridge/segment cap và được ghi lại trong provenance; nó **không** bí mật thay model, provider hay data route. `high_accuracy_postprocess` giữ nguyên hành vi batch trước đây (2.000 ms) để tương thích. Sherpa vẫn chưa được bật: benchmark profile này là baseline bắt buộc trước A/B spike Silero–Sherpa.
+
+## Sherpa VAD spike foundation
+
+Đã thêm `VoiceActivityProvider`/`VadProvider` boundary vào live pipeline. Một developer có thể yêu cầu `MEETILY_VAD_ENGINE=sherpa`, nhưng build hiện tại báo rõ `requested=sherpa`, `effective=silero` và fallback an toàn thay vì giả vờ Sherpa đang chạy hoặc làm mất audio. Chi tiết artifact/model/benchmark gate ở [SHERPA_VAD_SPIKE.md](./SHERPA_VAD_SPIKE.md).

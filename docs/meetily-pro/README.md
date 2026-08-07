@@ -133,6 +133,7 @@ Các con số dưới đây là **mục tiêu để benchmark xác nhận**, kh�
 
 - [Quyết định đã chốt](./DECISIONS.md)
 - [Benchmark protocol](../../benchmarks/README.md)
+- [Sherpa VAD spike](./SHERPA_VAD_SPIKE.md)
 - [Milestones / roadmap](./MILESTONES.md)
 - [Kanban khởi tạo](./KANBAN.md)
 - [Handoff kỹ thuật, data model, risk và first sprint](./HANDOFF.md)

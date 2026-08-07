@@ -11,7 +11,7 @@ use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolat
 use super::devices::AudioDevice;
 use super::recording_state::{AudioChunk, AudioError, RecordingState, DeviceType};
 use super::audio_processing::{audio_to_mono, LoudnessNormalizer, NoiseSuppressionProcessor, HighPassFilter};
-use super::vad::{ContinuousVadProcessor};
+use super::vad_provider::{VadProvider, VoiceActivityProvider};
 
 /// Ring buffer for synchronized audio mixing
 /// Accumulates samples from mic and system streams until we have aligned windows
@@ -681,7 +681,7 @@ pub struct AudioPipeline {
     receiver: mpsc::UnboundedReceiver<AudioChunk>,
     transcription_sender: mpsc::UnboundedSender<AudioChunk>,
     state: Arc<RecordingState>,
-    vad_processor: ContinuousVadProcessor,
+    vad_processor: VadProvider,
     sample_rate: u32,
     chunk_id_counter: u64,
     // Performance optimization: reduce logging frequency
@@ -719,21 +719,26 @@ impl AudioPipeline {
         // For now, we log it for monitoring and potential optimization
         let _ = (mic_device_name, mic_device_kind, system_device_name, system_device_kind);
 
-        // Create VAD processor with balanced redemption time for speech accumulation
-        // The VAD processor now handles 48kHz->16kHz resampling internally
-        // This bridges natural pauses without excessive fragmentation
-        // For mac os core audio, 900ms, for windows 400ms seems good
-
-        let redemption_time = if cfg!(target_os = "macos") { 400 } else { 400 };
-
-        let vad_processor = match ContinuousVadProcessor::new(sample_rate, redemption_time) {
-            Ok(processor) => {
-                info!("VAD-driven pipeline: VAD segments will be sent directly to Whisper (no time-based accumulation)");
-                processor
+        // Create the provider boundary around the proven Silero implementation.
+        // A developer may request Sherpa through MEETILY_VAD_ENGINE=sherpa;
+        // until a reviewed bridge/model is bundled, the provider reports the
+        // request and safely falls back to Silero without dropping audio.
+        let vad_processor = match VadProvider::for_live_capture(sample_rate) {
+            Ok(provider) => {
+                let status = provider.status();
+                info!(
+                    "VAD-driven pipeline: requested={}, effective={}",
+                    status.requested_engine,
+                    status.effective_engine
+                );
+                if let Some(reason) = status.fallback_reason {
+                    warn!("VAD provider fallback: {}", reason);
+                }
+                provider
             }
             Err(e) => {
-                error!("Failed to create VAD processor: {}", e);
-                panic!("VAD processor creation failed: {}", e);
+                error!("Failed to create VAD provider: {}", e);
+                panic!("VAD provider creation failed: {}", e);
             }
         };
 

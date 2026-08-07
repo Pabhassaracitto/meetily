@@ -13,6 +13,11 @@ import {
   detectAndCacheSummaryLanguage,
 } from '@/lib/summary-language-preferences';
 import { normalizeSessionType } from '@/lib/session-types';
+import {
+  clearActiveTranscriptionRunMetadata,
+  finalizeTranscriptionRunMetadata,
+  readActiveTranscriptionRunMetadata,
+} from '@/lib/processing-runs';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -238,8 +243,24 @@ export function useRecordingStop(
 
         setStatus(RecordingStatus.SAVING, 'Saving meeting to database...');
 
+        const baseProcessingMetadata = finalizeTranscriptionRunMetadata(
+          readActiveTranscriptionRunMetadata()
+        );
         // Get fresh transcript state (ALL transcripts including late ones)
         const freshTranscripts = [...transcriptsRef.current];
+        const processingMetadata = baseProcessingMetadata
+          ? {
+              ...baseProcessingMetadata,
+              metrics: {
+                ...(baseProcessingMetadata.metrics || {}),
+                segments_saved: freshTranscripts.length,
+                word_count: freshTranscripts.reduce(
+                  (total, transcript) => total + transcript.text.trim().split(/\s+/).filter(Boolean).length,
+                  0
+                ),
+              },
+            }
+          : undefined;
 
         // Get folder_path and meeting_name from recording-stopped event
         const folderPath = sessionStorage.getItem('last_recording_folder_path');
@@ -260,7 +281,9 @@ export function useRecordingStop(
             savedMeetingName || meetingTitle || 'New Meeting',  // PREFER savedMeetingName (backend source)
             freshTranscripts,
             folderPath,
-            sessionType
+            sessionType,
+            processingMetadata,
+            'live'
           );
 
           const meetingId = responseData.meeting_id;
@@ -304,6 +327,7 @@ export function useRecordingStop(
           sessionStorage.removeItem('last_recording_folder_path');
           sessionStorage.removeItem('last_recording_meeting_name');
           sessionStorage.removeItem('active_session_type');
+          clearActiveTranscriptionRunMetadata();
           // Clean up IndexedDB meeting ID (redundant with markMeetingAsSaved cleanup, but ensures cleanup)
           sessionStorage.removeItem('indexeddb_current_meeting_id');
 

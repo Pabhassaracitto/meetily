@@ -9,6 +9,11 @@ import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import { toast } from 'sonner';
 import { getSessionTypeOption, SessionType } from '@/lib/session-types';
+import {
+  clearActiveTranscriptionRunMetadata,
+  createLiveTranscriptionRunMetadata,
+  saveActiveTranscriptionRunMetadata,
+} from '@/lib/processing-runs';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -36,14 +41,18 @@ export function useRecordingStart(
 
   const { clearTranscripts, setMeetingTitle } = useTranscripts();
   const { setIsMeetingActive } = useSidebar();
-  const { selectedDevices } = useConfig();
+  const { selectedDevices, selectedLanguage, transcriptModelConfig } = useConfig();
   const { setStatus } = useRecordingState();
 
-  // Snapshot the selected mode at recording start. The stop flow can run after
-  // navigation or a reload, so it reads this value when persisting the session.
+  // Snapshot the selected mode and transcription configuration at recording
+  // start. The stop flow can run after navigation or a reload, so it must not
+  // read a model/language preference that changed after capture began.
   const snapshotSessionType = useCallback(() => {
     sessionStorage.setItem('active_session_type', sessionType);
-  }, [sessionType]);
+    saveActiveTranscriptionRunMetadata(
+      createLiveTranscriptionRunMetadata(transcriptModelConfig, selectedLanguage)
+    );
+  }, [sessionType, selectedLanguage, transcriptModelConfig]);
 
   // Generate a mode-aware session title with a timestamp.
   const generateMeetingTitle = useCallback(() => {
@@ -144,6 +153,7 @@ export function useRecordingStart(
       // Show recording notification if enabled
       await showRecordingNotification();
     } catch (error) {
+      clearActiveTranscriptionRunMetadata();
       console.error('Failed to start recording:', error);
       setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to start recording');
       setIsRecording(false); // Reset state on error
@@ -214,6 +224,7 @@ export function useRecordingStart(
             // Show recording notification if enabled
             await showRecordingNotification();
           } catch (error) {
+            clearActiveTranscriptionRunMetadata();
             console.error('Failed to auto-start recording:', error);
             setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to auto-start recording');
             alert('Failed to start recording. Check console for details.');
@@ -304,6 +315,7 @@ export function useRecordingStart(
         // Show recording notification if enabled
         await showRecordingNotification();
       } catch (error) {
+        clearActiveTranscriptionRunMetadata();
         console.error('Failed to start recording from sidebar:', error);
         setStatus(RecordingStatus.ERROR, error instanceof Error ? error.message : 'Failed to start recording from sidebar');
         alert('Failed to start recording. Check console for details.');

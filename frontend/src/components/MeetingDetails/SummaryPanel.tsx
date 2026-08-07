@@ -7,6 +7,7 @@ import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
+import { ProcessingProvenance } from './ProcessingProvenance';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { toast } from 'sonner';
@@ -267,6 +268,7 @@ export function SummaryPanel({
             {sessionType.label}
           </span>
         </div>
+        <ProcessingProvenance meetingId={meeting.id} />
         {/* <EditableTitle
           title={meetingTitle}
           isEditing={isEditingTitle}

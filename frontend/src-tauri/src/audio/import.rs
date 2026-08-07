@@ -2,7 +2,12 @@
 
 use crate::api::TranscriptSegment;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
-use crate::database::models::SessionType;
+use crate::{
+    database::{
+        models::{SessionType, TranscriptionRunMetadata},
+        repositories::processing_run::ProcessingRunsRepository,
+    },
+};
 use crate::audio::vad::get_speech_chunks_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
 use crate::parakeet_engine::ParakeetEngine;
@@ -326,6 +331,8 @@ async fn run_import<R: Runtime>(
     session_type: String,
     summary_template_id: String,
 ) -> Result<ImportResult> {
+    let processing_started_at = chrono::Utc::now().to_rfc3339();
+    let processing_timer = std::time::Instant::now();
     let source = PathBuf::from(&source_path);
 
     // Validate source file
@@ -608,9 +615,12 @@ async fn run_import<R: Runtime>(
         let trimmed = text.trim();
         if !trimmed.is_empty() {
             debug!(
-                "Segment {}/{}: {:.1}s, conf={:.2}, text='{}'",
-                i + 1, processable_count, segment_duration_sec, conf,
-                if trimmed.len() > 80 { let mut end = 80; while !trimmed.is_char_boundary(end) { end -= 1; } &trimmed[..end] } else { trimmed }
+                "Segment {}/{}: {:.1}s, conf={:.2}, text_length={}",
+                i + 1,
+                processable_count,
+                segment_duration_sec,
+                conf,
+                trimmed.chars().count()
             );
             all_transcripts.push((text, segment.start_timestamp_ms, segment.end_timestamp_ms));
             total_confidence += conf;
@@ -642,6 +652,49 @@ async fn run_import<R: Runtime>(
     // Create transcript segments
     let segments = create_transcript_segments(&all_transcripts);
 
+    let resolved_model_id = if use_parakeet {
+        match parakeet_engine.as_ref() {
+            Some(engine) => engine.get_current_model().await,
+            None => None,
+        }
+    } else {
+        match whisper_engine.as_ref() {
+            Some(engine) => engine.get_current_model().await,
+            None => None,
+        }
+    }
+    .or_else(|| model.clone())
+    .unwrap_or_else(|| {
+        if use_parakeet {
+            DEFAULT_PARAKEET_MODEL.to_string()
+        } else {
+            DEFAULT_WHISPER_MODEL.to_string()
+        }
+    });
+    let processing_metadata = TranscriptionRunMetadata {
+        provider: Some(
+            (if use_parakeet { "parakeet" } else { "localWhisper" }).to_string(),
+        ),
+        model_id: Some(resolved_model_id),
+        language_hint: language.clone(),
+        vad_engine: Some("silero".to_string()),
+        vad_config: Some(serde_json::json!({
+            "mode": "batch",
+            "redemption_ms": VAD_REDEMPTION_TIME_MS,
+            "sample_rate_hz": 16000
+        })),
+        started_at: Some(processing_started_at),
+        processing_time_ms: Some(
+            processing_timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        ),
+        metrics: Some(serde_json::json!({
+            "recording_duration_seconds": duration_seconds,
+            "segments_detected": total_segments,
+            "segments_transcribed": transcribed_count,
+            "average_confidence": avg_confidence
+        })),
+    };
+
     // Save to database
     let app_state = app
         .try_state::<AppState>()
@@ -654,6 +707,7 @@ async fn run_import<R: Runtime>(
         meeting_folder.to_string_lossy().to_string(),
         &session_type,
         &summary_template_id,
+        &processing_metadata,
     )
     .await?;
 
@@ -708,6 +762,7 @@ async fn create_meeting_with_transcripts(
     folder_path: String,
     session_type: &str,
     summary_template_id: &str,
+    processing_metadata: &TranscriptionRunMetadata,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -752,14 +807,25 @@ async fn create_meeting_with_transcripts(
         .map_err(|e| anyhow!("Failed to insert transcript: {}", e))?;
     }
 
+    let processing_run_id = ProcessingRunsRepository::insert_completed_transcription_run(
+        &mut *tx,
+        &meeting_id,
+        "import",
+        Some(processing_metadata),
+        None,
+    )
+    .await
+    .map_err(|e| anyhow!("Failed to save processing provenance: {}", e))?;
+
     tx.commit()
         .await
         .map_err(|e| anyhow!("Failed to commit transaction: {}", e))?;
 
     info!(
-        "Created meeting '{}' with {} transcripts",
+        "Created meeting '{}' with {} transcripts and processing run '{}'",
         meeting_id,
-        segments.len()
+        segments.len(),
+        processing_run_id
     );
 
     Ok(meeting_id)

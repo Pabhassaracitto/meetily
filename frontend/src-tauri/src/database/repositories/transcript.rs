@@ -1,10 +1,22 @@
-use crate::api::{TranscriptSearchResult, TranscriptSegment};
+use crate::{
+    api::{TranscriptSearchResult, TranscriptSegment},
+    database::{
+        models::TranscriptionRunMetadata,
+        repositories::processing_run::ProcessingRunsRepository,
+    },
+};
 use chrono::Utc;
 use sqlx::{Connection, Error as SqlxError, SqlitePool};
 use tracing::{error, info};
 use uuid::Uuid;
 
 pub struct TranscriptsRepository;
+
+#[derive(Debug, Clone)]
+pub struct SavedTranscript {
+    pub meeting_id: String,
+    pub processing_run_id: String,
+}
 
 impl TranscriptsRepository {
     /// Saves a new meeting and its associated transcript segments.
@@ -17,7 +29,9 @@ impl TranscriptsRepository {
         folder_path: Option<String>,
         session_type: &str,
         summary_template_id: &str,
-    ) -> Result<String, SqlxError> {
+        source_kind: &str,
+        processing_metadata: Option<&TranscriptionRunMetadata>,
+    ) -> Result<SavedTranscript, SqlxError> {
         let meeting_id = format!("meeting-{}", Uuid::new_v4());
 
         let mut conn = pool.acquire().await?;
@@ -80,10 +94,33 @@ impl TranscriptsRepository {
             meeting_id
         );
 
-        // Commit the transaction
+        let processing_run_id = match ProcessingRunsRepository::insert_completed_transcription_run(
+            &mut *transaction,
+            &meeting_id,
+            source_kind,
+            processing_metadata,
+            None,
+        )
+        .await
+        {
+            Ok(run_id) => run_id,
+            Err(error) => {
+                error!(
+                    "Failed to save processing provenance for meeting {}: {}",
+                    meeting_id, error
+                );
+                transaction.rollback().await?;
+                return Err(error);
+            }
+        };
+
+        // Commit the transcript and its provenance atomically.
         transaction.commit().await?;
 
-        Ok(meeting_id)
+        Ok(SavedTranscript {
+            meeting_id,
+            processing_run_id,
+        })
     }
 
     /// Searches for a query string within the transcripts.

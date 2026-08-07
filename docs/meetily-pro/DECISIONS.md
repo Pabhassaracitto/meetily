@@ -34,3 +34,7 @@ Bản thay đổi đầu tiên sau các quyết định này triển khai nền 
 ## Quality foundation đang triển khai
 
 Đã thêm [`benchmarks/`](../../benchmarks/README.md) cùng `scripts/benchmark_transcription.py` để so sánh WER/CER, term accuracy, latency và real-time factor mà không đưa raw transcript/audio vào report Git. Harness đã có unit test; corpus tiếng Việt/lớp học/pháp thoại có quyền sử dụng và ngưỡng phát hành vẫn là gate bắt buộc của `PRO-003`.
+
+## Processing provenance đang triển khai
+
+Mỗi transcript được lưu từ live capture, import, retranscription hoặc recovery giờ tạo một `processing_runs` record trong cùng transaction với transcript. Record lưu source, provider/model, language hint, VAD config, thời gian xử lý và aggregate metrics; repository từ chối các key nội dung như `transcript`, `text`, `audio`, `prompt`, API key hoặc embedding trong metadata. API `api_get_processing_runs` đã sẵn sàng cho UI history/compare ở milestone tiếp theo.

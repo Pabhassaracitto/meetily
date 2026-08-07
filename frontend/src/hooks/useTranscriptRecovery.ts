@@ -181,7 +181,9 @@ export function useTranscriptRecovery(): UseTranscriptRecoveryReturn {
         metadata.title,
         formattedTranscripts,
         folderPath ?? null,
-        normalizeSessionType(metadata.sessionType)
+        normalizeSessionType(metadata.sessionType),
+        undefined,
+        'recovery'
       );
 
       const savedMeetingId = saveResponse.meeting_id;

@@ -6,9 +6,11 @@ use tauri_plugin_store::StoreExt;
 
 use crate::{
     database::{
-        models::{MeetingModel, SessionType},
+        models::{MeetingModel, ProcessingRun, SessionType, TranscriptionRunMetadata},
         repositories::{
-            meeting::MeetingsRepository, setting::SettingsRepository,
+            meeting::MeetingsRepository,
+            processing_run::ProcessingRunsRepository,
+            setting::SettingsRepository,
             transcript::TranscriptsRepository,
         },
     },
@@ -851,6 +853,19 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
     }
 }
 
+/// Lists immutable ASR/retranscription provenance for a session. The records
+/// contain aggregate configuration and metrics only; transcript/audio content
+/// remains in their dedicated storage paths.
+#[tauri::command]
+pub async fn api_get_processing_runs(
+    state: tauri::State<'_, AppState>,
+    meeting_id: String,
+) -> Result<Vec<ProcessingRun>, String> {
+    ProcessingRunsRepository::list_for_meeting(state.db_manager.pool(), &meeting_id)
+        .await
+        .map_err(|error| format!("Failed to load processing runs: {error}"))
+}
+
 /// Get paginated transcripts for a meeting
 #[tauri::command]
 pub async fn api_get_meeting_transcripts<R: Runtime>(
@@ -944,26 +959,39 @@ pub async fn api_save_transcript<R: Runtime>(
     transcripts: Vec<serde_json::Value>,
     folder_path: Option<String>,
     session_type: Option<String>,
+    source_kind: Option<String>,
+    processing_metadata: Option<TranscriptionRunMetadata>,
     auth_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let parsed_session_type = SessionType::from_optional(session_type.as_deref())?;
     let session_type = parsed_session_type.to_string();
     let summary_template_id = parsed_session_type.default_template_id();
+    let source_kind = source_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|source| !source.is_empty())
+        .unwrap_or("live");
 
     log_info!(
-        "api_save_transcript called for meeting: {}, session_type: {}, transcripts: {}, folder_path: {:?}, auth_token: {}",
+        "api_save_transcript called for meeting: {}, session_type: {}, source_kind: {}, transcripts: {}, folder_path: {:?}, auth_token: {}",
         meeting_title,
         session_type,
+        source_kind,
         transcripts.len(),
         folder_path,
         auth_token.is_some()
     );
 
-    // Log first transcript for debugging
+    // Keep diagnostics content-free: transcript text can be sensitive session data.
     if let Some(first) = transcripts.first() {
+        let text_length = first
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .map(str::len)
+            .unwrap_or_default();
         log_debug!(
-            "First transcript data: {}",
-            serde_json::to_string_pretty(first).unwrap_or_default()
+            "First transcript payload received (text_length={} characters)",
+            text_length
         );
     }
 
@@ -977,13 +1005,15 @@ pub async fn api_save_transcript<R: Runtime>(
             format!("Invalid transcript data format: {}. Please check the data structure.", e)
         })?;
 
-    // Log parsed segments count and first segment details
+    // Log non-content diagnostics only; do not write transcript text to logs.
     if let Some(first_seg) = transcripts_to_save.first() {
-        log_debug!("First parsed segment: text='{}', audio_start_time={:?}, audio_end_time={:?}, duration={:?}",
-                   first_seg.text.chars().take(50).collect::<String>(),
-                   first_seg.audio_start_time,
-                   first_seg.audio_end_time,
-                   first_seg.duration);
+        log_debug!(
+            "First parsed segment: text_length={}, audio_start_time={:?}, audio_end_time={:?}, duration={:?}",
+            first_seg.text.chars().count(),
+            first_seg.audio_start_time,
+            first_seg.audio_end_time,
+            first_seg.duration
+        );
     }
 
     let pool = state.db_manager.pool();
@@ -996,18 +1026,22 @@ pub async fn api_save_transcript<R: Runtime>(
         folder_path,
         &session_type,
         summary_template_id,
+        source_kind,
+        processing_metadata.as_ref(),
     )
     .await
     {
-        Ok(meeting_id) => {
+        Ok(saved_transcript) => {
             log_info!(
-                "Successfully saved transcript and created meeting with id: {}",
-                meeting_id
+                "Successfully saved transcript and created meeting {} with processing run {}",
+                saved_transcript.meeting_id,
+                saved_transcript.processing_run_id
             );
             Ok(serde_json::json!({
                 "status": "success",
                 "message": "Transcript saved successfully",
-                "meeting_id": meeting_id
+                "meeting_id": saved_transcript.meeting_id,
+                "processing_run_id": saved_transcript.processing_run_id
             }))
         }
         Err(e) => {

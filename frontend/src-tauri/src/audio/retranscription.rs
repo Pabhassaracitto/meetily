@@ -2,6 +2,12 @@
 
 use crate::audio::decoder::decode_audio_file;
 use crate::audio::vad::get_speech_chunks_with_progress;
+use crate::{
+    database::{
+        models::TranscriptionRunMetadata,
+        repositories::processing_run::ProcessingRunsRepository,
+    },
+};
 use super::common::{create_transcript_segments, split_segment_at_silence, write_transcripts_json};
 use super::constants::AUDIO_EXTENSIONS;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
@@ -177,6 +183,8 @@ async fn run_retranscription<R: Runtime>(
     model: Option<String>,
     provider: Option<String>,
 ) -> Result<RetranscriptionResult> {
+    let processing_started_at = chrono::Utc::now().to_rfc3339();
+    let processing_timer = std::time::Instant::now();
     let folder_path = PathBuf::from(&meeting_folder_path);
     let audio_path = find_audio_file(&folder_path)?;
 
@@ -388,9 +396,12 @@ async fn run_retranscription<R: Runtime>(
         let trimmed = text.trim();
         if !trimmed.is_empty() {
             debug!(
-                "Segment {}/{}: {:.1}s, conf={:.2}, text='{}'",
-                i + 1, processable_count, segment_duration_sec, conf,
-                if trimmed.len() > 80 { let mut end = 80; while !trimmed.is_char_boundary(end) { end -= 1; } &trimmed[..end] } else { trimmed }
+                "Segment {}/{}: {:.1}s, conf={:.2}, text_length={}",
+                i + 1,
+                processable_count,
+                segment_duration_sec,
+                conf,
+                trimmed.chars().count()
             );
             all_transcripts.push((text, segment.start_timestamp_ms, segment.end_timestamp_ms));
             total_confidence += conf;
@@ -420,6 +431,49 @@ async fn run_retranscription<R: Runtime>(
 
     // Create transcript segments with proper timestamps from VAD
     let segments = create_transcript_segments(&all_transcripts);
+
+    let resolved_model_id = if use_parakeet {
+        match parakeet_engine.as_ref() {
+            Some(engine) => engine.get_current_model().await,
+            None => None,
+        }
+    } else {
+        match whisper_engine.as_ref() {
+            Some(engine) => engine.get_current_model().await,
+            None => None,
+        }
+    }
+    .or_else(|| model.clone())
+    .unwrap_or_else(|| {
+        if use_parakeet {
+            DEFAULT_PARAKEET_MODEL.to_string()
+        } else {
+            DEFAULT_WHISPER_MODEL.to_string()
+        }
+    });
+    let processing_metadata = TranscriptionRunMetadata {
+        provider: Some(
+            (if use_parakeet { "parakeet" } else { "localWhisper" }).to_string(),
+        ),
+        model_id: Some(resolved_model_id),
+        language_hint: language.clone(),
+        vad_engine: Some("silero".to_string()),
+        vad_config: Some(serde_json::json!({
+            "mode": "batch",
+            "redemption_ms": VAD_REDEMPTION_TIME_MS,
+            "sample_rate_hz": 16000
+        })),
+        started_at: Some(processing_started_at),
+        processing_time_ms: Some(
+            processing_timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        ),
+        metrics: Some(serde_json::json!({
+            "recording_duration_seconds": duration_seconds,
+            "segments_detected": total_segments,
+            "segments_transcribed": transcribed_count,
+            "average_confidence": avg_confidence
+        })),
+    };
 
     // Save to database
     let app_state = app
@@ -456,13 +510,24 @@ async fn run_retranscription<R: Runtime>(
         .map_err(|e| anyhow!("Failed to insert transcript: {}", e))?;
     }
 
+    let processing_run_id = ProcessingRunsRepository::insert_completed_transcription_run(
+        &mut *tx,
+        &meeting_id,
+        "retranscription",
+        Some(&processing_metadata),
+        None,
+    )
+    .await
+    .map_err(|e| anyhow!("Failed to save retranscription provenance: {}", e))?;
+
     tx.commit().await
         .map_err(|e| anyhow!("Failed to commit transaction: {}", e))?;
 
     info!(
-        "Updated {} transcripts for meeting {} in transaction",
+        "Updated {} transcripts for meeting {} in transaction with processing run {}",
         segments.len(),
-        meeting_id
+        meeting_id,
+        processing_run_id
     );
 
     // Write updated transcripts.json and metadata.json to the meeting folder
@@ -484,6 +549,7 @@ async fn run_retranscription<R: Runtime>(
         &meeting_id,
         duration_seconds,
         &audio_filename,
+        &processing_run_id,
     ) {
         warn!("Failed to update metadata.json: {}", e);
     }
@@ -726,6 +792,7 @@ fn write_retranscription_metadata(
     meeting_id: &str,
     duration_seconds: f64,
     audio_filename: &str,
+    processing_run_id: &str,
 ) -> Result<()> {
     let metadata_path = folder.join("metadata.json");
     let temp_path = folder.join(".metadata.json.tmp");
@@ -737,6 +804,7 @@ fn write_retranscription_metadata(
         let mut value: serde_json::Value = serde_json::from_str(&existing)?;
         if let Some(obj) = value.as_object_mut() {
             obj.insert("retranscribed_at".to_string(), serde_json::json!(now));
+            obj.insert("processing_run_id".to_string(), serde_json::json!(processing_run_id));
             obj.insert("status".to_string(), serde_json::json!("completed"));
             obj.insert("transcript_file".to_string(), serde_json::json!("transcripts.json"));
             obj.remove("detected_summary_language");
@@ -749,6 +817,7 @@ fn write_retranscription_metadata(
             "created_at": now,
             "completed_at": now,
             "retranscribed_at": now,
+            "processing_run_id": processing_run_id,
             "duration_seconds": duration_seconds,
             "audio_file": audio_filename,
             "transcript_file": "transcripts.json",

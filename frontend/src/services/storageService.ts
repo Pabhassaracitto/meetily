@@ -8,16 +8,23 @@
 import { invoke } from '@tauri-apps/api/core';
 import { Transcript } from '@/types';
 import { SessionType } from '@/lib/session-types';
+import {
+  ProcessingSourceKind,
+  TranscriptionRunMetadata,
+} from '@/lib/processing-runs';
 
 export interface SaveMeetingRequest {
   meetingTitle: string;
   transcripts: Transcript[];
   folderPath: string | null;
   sessionType: SessionType;
+  sourceKind?: ProcessingSourceKind;
+  processingMetadata?: TranscriptionRunMetadata;
 }
 
 export interface SaveMeetingResponse {
   meeting_id: string;
+  processing_run_id?: string;
 }
 
 export interface Meeting {
@@ -37,19 +44,25 @@ export class StorageService {
    * @param transcripts - Array of transcript segments
    * @param folderPath - Optional folder path for audio file
    * @param sessionType - The purpose of the captured session
-   * @returns Promise with { meeting_id: string }
+   * @param processingMetadata - Non-content ASR provider/model/VAD provenance
+   * @param sourceKind - Capture path that created the transcript
+   * @returns Promise with the session and immutable processing-run IDs
    */
   async saveMeeting(
     meetingTitle: string,
     transcripts: Transcript[],
     folderPath: string | null,
-    sessionType: SessionType = 'meeting'
+    sessionType: SessionType = 'meeting',
+    processingMetadata?: TranscriptionRunMetadata,
+    sourceKind: ProcessingSourceKind = 'live'
   ): Promise<SaveMeetingResponse> {
     return invoke<SaveMeetingResponse>('api_save_transcript', {
       meetingTitle,
       transcripts,
       folderPath,
       sessionType,
+      processingMetadata,
+      sourceKind,
     });
   }
 

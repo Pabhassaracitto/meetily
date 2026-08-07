@@ -105,6 +105,53 @@ pub struct Transcript {
     pub duration: Option<f64>,
 }
 
+/// Non-content metadata captured for a single ASR operation.
+///
+/// This is supplied by the caller that knows the configuration at the moment
+/// processing starts. It deliberately has no fields for transcript/audio text,
+/// credentials, prompts, or speaker embeddings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptionRunMetadata {
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub language_hint: Option<String>,
+    #[serde(default)]
+    pub vad_engine: Option<String>,
+    #[serde(default)]
+    pub vad_config: Option<serde_json::Value>,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub processing_time_ms: Option<i64>,
+    #[serde(default)]
+    pub metrics: Option<serde_json::Value>,
+}
+
+/// Persisted, immutable provenance for a completed transcription operation.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ProcessingRun {
+    pub id: String,
+    pub meeting_id: String,
+    pub run_kind: String,
+    pub source_kind: String,
+    pub status: String,
+    pub provider: String,
+    pub model_id: String,
+    pub language_hint: Option<String>,
+    pub vad_engine: Option<String>,
+    pub vad_config_json: Option<String>,
+    pub started_at: String,
+    pub completed_at: String,
+    pub processing_time_ms: Option<i64>,
+    pub metrics_json: Option<String>,
+    pub parent_run_id: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct SummaryProcess {
     pub meeting_id: String,

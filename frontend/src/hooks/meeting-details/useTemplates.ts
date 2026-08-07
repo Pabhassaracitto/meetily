@@ -3,7 +3,10 @@ import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
-export function useTemplates(defaultTemplateId: string = 'standard_meeting') {
+export function useTemplates(
+  meetingId: string,
+  defaultTemplateId: string = 'standard_meeting'
+) {
   const [availableTemplates, setAvailableTemplates] = useState<Array<{
     id: string;
     name: string;
@@ -11,11 +14,11 @@ export function useTemplates(defaultTemplateId: string = 'standard_meeting') {
   }>>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>(defaultTemplateId);
 
-  // Change the default only when the session mode changes. A manual selection
-  // remains active while the user works within the same session.
+  // The backend is the source of truth for a saved workflow. Reset only when
+  // navigating to a different session or when its persisted template changes.
   useEffect(() => {
     setSelectedTemplate(defaultTemplateId);
-  }, [defaultTemplateId]);
+  }, [meetingId, defaultTemplateId]);
 
   // Fetch available templates on mount
   useEffect(() => {
@@ -35,14 +38,32 @@ export function useTemplates(defaultTemplateId: string = 'standard_meeting') {
     fetchTemplates();
   }, []);
 
-  // Handle template selection
-  const handleTemplateSelection = useCallback((templateId: string, templateName: string) => {
+  // Persist the workflow immediately so a reload, later summary generation, or
+  // export uses the same template. Roll back the optimistic selection on error.
+  const handleTemplateSelection = useCallback(async (templateId: string, templateName: string) => {
+    if (templateId === selectedTemplate) return;
+
+    const previousTemplateId = selectedTemplate;
     setSelectedTemplate(templateId);
-    toast.success('Template selected', {
-      description: `Using "${templateName}" template for summary generation`,
-    });
-    Analytics.trackFeatureUsed('template_selected');
-  }, []);
+
+    try {
+      const saved = await invokeTauri('api_save_session_template', {
+        meetingId,
+        templateId,
+      }) as { template_id: string; name: string };
+      setSelectedTemplate(saved.template_id);
+      toast.success('Template saved for this session', {
+        description: `Using "${saved.name || templateName}" for future summary generation`,
+      });
+      Analytics.trackFeatureUsed('template_selected');
+    } catch (error) {
+      console.error('Failed to save session template:', error);
+      setSelectedTemplate(previousTemplateId);
+      toast.error('Could not save template selection', {
+        description: 'Your previous session template has been restored.',
+      });
+    }
+  }, [meetingId, selectedTemplate]);
 
   return {
     availableTemplates,

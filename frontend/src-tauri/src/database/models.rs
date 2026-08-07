@@ -26,6 +26,16 @@ impl SessionType {
         }
     }
 
+    /// Built-in template applied when a new session is created in this mode.
+    /// Users can later choose and persist another valid template per session.
+    pub const fn default_template_id(self) -> &'static str {
+        match self {
+            Self::Meeting => "standard_meeting",
+            Self::OnlineClass => "online_class",
+            Self::DharmaTalk => "dharma_talk",
+        }
+    }
+
     /// Use the legacy meeting mode when a caller does not provide a type.
     /// Unknown values are rejected rather than silently being stored as a new
     /// unsupported session category.
@@ -66,6 +76,7 @@ pub struct MeetingModel {
     pub updated_at: DateTimeUtc,
     pub folder_path: Option<String>,
     pub session_type: String,
+    pub summary_template_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
@@ -191,6 +202,13 @@ mod tests {
     #[test]
     fn session_type_rejects_unknown_values() {
         assert!(SessionType::from_optional(Some("webinar")).is_err());
+    }
+
+    #[test]
+    fn session_type_uses_mode_aware_default_templates() {
+        assert_eq!(SessionType::Meeting.default_template_id(), "standard_meeting");
+        assert_eq!(SessionType::OnlineClass.default_template_id(), "online_class");
+        assert_eq!(SessionType::DharmaTalk.default_template_id(), "dharma_talk");
     }
 }
 

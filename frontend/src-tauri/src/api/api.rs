@@ -31,6 +31,7 @@ pub struct Meeting {
     pub id: String,
     pub title: String,
     pub session_type: String,
+    pub summary_template_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -124,6 +125,7 @@ pub struct MeetingDetails {
     pub created_at: String,
     pub updated_at: String,
     pub session_type: String,
+    pub summary_template_id: String,
     pub transcripts: Vec<MeetingTranscript>,
 }
 
@@ -149,6 +151,7 @@ pub struct MeetingMetadata {
     pub created_at: String,
     pub updated_at: String,
     pub session_type: String,
+    pub summary_template_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder_path: Option<String>,
 }
@@ -345,6 +348,7 @@ pub async fn api_get_meetings<R: Runtime>(
                     id: m.id,
                     title: m.title,
                     session_type: m.session_type,
+                    summary_template_id: m.summary_template_id,
                 })
                 .collect();
             Ok(result)
@@ -832,6 +836,7 @@ pub async fn api_get_meeting_metadata<R: Runtime>(
                 created_at: meeting.created_at.0.to_rfc3339(),
                 updated_at: meeting.updated_at.0.to_rfc3339(),
                 session_type: meeting.session_type,
+                summary_template_id: meeting.summary_template_id,
                 folder_path: meeting.folder_path,
             })
         }
@@ -941,7 +946,9 @@ pub async fn api_save_transcript<R: Runtime>(
     session_type: Option<String>,
     auth_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let session_type = SessionType::from_optional(session_type.as_deref())?.to_string();
+    let parsed_session_type = SessionType::from_optional(session_type.as_deref())?;
+    let session_type = parsed_session_type.to_string();
+    let summary_template_id = parsed_session_type.default_template_id();
 
     log_info!(
         "api_save_transcript called for meeting: {}, session_type: {}, transcripts: {}, folder_path: {:?}, auth_token: {}",
@@ -988,6 +995,7 @@ pub async fn api_save_transcript<R: Runtime>(
         &transcripts_to_save,
         folder_path,
         &session_type,
+        summary_template_id,
     )
     .await
     {
@@ -1026,7 +1034,7 @@ pub async fn open_meeting_folder<R: Runtime>(
 
     // Get meeting with folder_path
     let meeting: Option<MeetingModel> = sqlx::query_as(
-        "SELECT id, title, created_at, updated_at, folder_path, session_type FROM meetings WHERE id = ?",
+        "SELECT id, title, created_at, updated_at, folder_path, session_type, summary_template_id FROM meetings WHERE id = ?",
     )
     .bind(&meeting_id)
     .fetch_optional(pool)

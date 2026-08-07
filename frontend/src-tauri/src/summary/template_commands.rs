@@ -1,4 +1,8 @@
-use crate::summary::templates;
+use crate::{
+    database::repositories::meeting::MeetingsRepository,
+    state::AppState,
+    summary::templates,
+};
 use serde::{Deserialize, Serialize};
 use tauri::Runtime;
 use tracing::{info, warn};
@@ -30,6 +34,14 @@ pub struct TemplateDetails {
 
     /// List of section titles in order
     pub sections: Vec<String>,
+}
+
+/// Persisted template selection returned after validating a session workflow.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionTemplateSelection {
+    pub template_id: String,
+    pub name: String,
+    pub description: String,
 }
 
 /// Lists all available templates
@@ -93,6 +105,45 @@ pub async fn api_get_template_details<R: Runtime>(
     info!("Retrieved template details for '{}'", details.name);
 
     Ok(details)
+}
+
+/// Saves the template chosen for a session after confirming that it is a valid
+/// built-in, bundled, or user custom template. Persisting the selection keeps
+/// summary workflows stable after a reload instead of resetting to a global
+/// default.
+#[tauri::command]
+pub async fn api_save_session_template(
+    state: tauri::State<'_, AppState>,
+    meeting_id: String,
+    template_id: String,
+) -> Result<SessionTemplateSelection, String> {
+    if meeting_id.trim().is_empty() {
+        return Err("meeting_id cannot be empty".to_string());
+    }
+
+    let template = templates::get_template(&template_id)?;
+    let updated = MeetingsRepository::update_summary_template(
+        state.db_manager.pool(),
+        &meeting_id,
+        &template_id,
+    )
+    .await
+    .map_err(|error| format!("Failed to save session template: {error}"))?;
+
+    if !updated {
+        return Err(format!("Session not found: {meeting_id}"));
+    }
+
+    info!(
+        "Saved template '{}' for session '{}'",
+        template_id, meeting_id
+    );
+
+    Ok(SessionTemplateSelection {
+        template_id,
+        name: template.name,
+        description: template.description,
+    })
 }
 
 /// Validates a custom template JSON string

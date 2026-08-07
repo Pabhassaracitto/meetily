@@ -94,6 +94,7 @@ export interface MeetingMetadata {
   created_at: string;
   updated_at: string;
   session_type: SessionType;
+  summary_template_id: string;
   folder_path?: string;
 }
 

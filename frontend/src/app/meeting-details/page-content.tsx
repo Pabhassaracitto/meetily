@@ -70,7 +70,10 @@ export default function PageContent({
 
   // Custom hooks
   const meetingData = useMeetingData({ meeting, summaryData, onMeetingUpdated });
-  const templates = useTemplates(getDefaultTemplateForSessionType(meeting.session_type));
+  const templates = useTemplates(
+    meeting.id,
+    meeting.summary_template_id || getDefaultTemplateForSessionType(meeting.session_type)
+  );
 
   // Callback to register the modal open function
   const handleRegisterModalOpen = (openFn: () => void) => {

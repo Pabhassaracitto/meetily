@@ -62,7 +62,7 @@ impl MeetingsRepository {
 
         // Get meeting details
         let meeting: Option<MeetingModel> =
-            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, session_type FROM meetings WHERE id = ?")
+            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, session_type, summary_template_id FROM meetings WHERE id = ?")
                 .bind(meeting_id)
                 .fetch_optional(&mut *transaction)
                 .await?;
@@ -101,6 +101,7 @@ impl MeetingsRepository {
                 created_at: meeting.created_at.0.to_rfc3339(),
                 updated_at: meeting.updated_at.0.to_rfc3339(),
                 session_type: meeting.session_type,
+                summary_template_id: meeting.summary_template_id,
                 transcripts: meeting_transcripts,
             }))
         } else {
@@ -121,7 +122,7 @@ impl MeetingsRepository {
         }
 
         let meeting: Option<MeetingModel> =
-            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, session_type FROM meetings WHERE id = ?")
+            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, session_type, summary_template_id FROM meetings WHERE id = ?")
                 .bind(meeting_id)
                 .fetch_optional(pool)
                 .await?;
@@ -164,6 +165,36 @@ impl MeetingsRepository {
         .await?;
 
         Ok((transcripts, total.0))
+    }
+
+    /// Persist a validated summary template choice for a session.
+    pub async fn update_summary_template(
+        pool: &SqlitePool,
+        meeting_id: &str,
+        template_id: &str,
+    ) -> Result<bool, SqlxError> {
+        if meeting_id.trim().is_empty() {
+            return Err(SqlxError::Protocol(
+                "meeting_id cannot be empty".to_string(),
+            ));
+        }
+        if template_id.trim().is_empty() {
+            return Err(SqlxError::Protocol(
+                "template_id cannot be empty".to_string(),
+            ));
+        }
+
+        let now = Utc::now().naive_utc();
+        let result = sqlx::query(
+            "UPDATE meetings SET summary_template_id = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(template_id)
+        .bind(now)
+        .bind(meeting_id)
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     pub async fn update_meeting_title(

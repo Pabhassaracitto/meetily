@@ -16,6 +16,7 @@ impl TranscriptsRepository {
         transcripts: &[TranscriptSegment],
         folder_path: Option<String>,
         session_type: &str,
+        summary_template_id: &str,
     ) -> Result<String, SqlxError> {
         let meeting_id = format!("meeting-{}", Uuid::new_v4());
 
@@ -26,7 +27,7 @@ impl TranscriptsRepository {
 
         // 1. Create the new meeting
         let result = sqlx::query(
-            "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, session_type) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, session_type, summary_template_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&meeting_id)
         .bind(meeting_title)
@@ -34,6 +35,7 @@ impl TranscriptsRepository {
         .bind(now)
         .bind(&folder_path)
         .bind(session_type)
+        .bind(summary_template_id)
         .execute(&mut *transaction)
         .await;
 

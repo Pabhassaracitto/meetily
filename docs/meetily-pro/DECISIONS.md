@@ -26,7 +26,8 @@ Bản thay đổi đầu tiên sau các quyết định này triển khai nền 
 - migration `20260808000000_add_session_type.sql` với default `meeting` cho dữ liệu cũ;
 - lựa chọn **Meeting / Online Class / Dharma Talk** khi ghi âm hoặc import;
 - lưu session type khi persist/recover transcript; API metadata trả type để UI hiển thị;
-- template built-in `online_class` và `dharma_talk`, tự chọn theo session type khi mở summary.
+- template built-in `online_class` và `dharma_talk`, tự chọn theo session type khi mở summary;
+- lựa chọn template được persist theo session thay vì chỉ nằm trong React state, nên reload/tạo summary lại vẫn giữ workflow đã chọn.
 
 Đây mới là vertical slice M1, chưa phải claim hoàn tất processing provenance, glossary, export, audit hoặc compliance controls.
 

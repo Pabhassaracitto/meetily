@@ -267,9 +267,10 @@ pub async fn start_import<R: Runtime>(
     // Reset cancellation flag
     IMPORT_CANCELLED.store(false, Ordering::SeqCst);
 
-    let session_type = SessionType::from_optional(session_type.as_deref())
-        .map_err(|error| anyhow!(error))?
-        .to_string();
+    let parsed_session_type = SessionType::from_optional(session_type.as_deref())
+        .map_err(|error| anyhow!(error))?;
+    let session_type = parsed_session_type.to_string();
+    let summary_template_id = parsed_session_type.default_template_id().to_string();
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_import(
         app.clone(),
@@ -279,6 +280,7 @@ pub async fn start_import<R: Runtime>(
         model,
         provider,
         session_type,
+        summary_template_id,
     )
     .await;
 
@@ -322,6 +324,7 @@ async fn run_import<R: Runtime>(
     model: Option<String>,
     provider: Option<String>,
     session_type: String,
+    summary_template_id: String,
 ) -> Result<ImportResult> {
     let source = PathBuf::from(&source_path);
 
@@ -650,6 +653,7 @@ async fn run_import<R: Runtime>(
         &segments,
         meeting_folder.to_string_lossy().to_string(),
         &session_type,
+        &summary_template_id,
     )
     .await?;
 
@@ -668,6 +672,7 @@ async fn run_import<R: Runtime>(
         &dest_filename,
         "import",
         &session_type,
+        &summary_template_id,
     ) {
         warn!("Failed to write metadata.json: {}", e);
     }
@@ -702,6 +707,7 @@ async fn create_meeting_with_transcripts(
     segments: &[TranscriptSegment],
     folder_path: String,
     session_type: &str,
+    summary_template_id: &str,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -714,8 +720,8 @@ async fn create_meeting_with_transcripts(
 
     // Insert meeting
     sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, session_type)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, session_type, summary_template_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&meeting_id)
     .bind(title)
@@ -723,6 +729,7 @@ async fn create_meeting_with_transcripts(
     .bind(now)
     .bind(&folder_path)
     .bind(session_type)
+    .bind(summary_template_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
@@ -895,6 +902,7 @@ fn write_import_metadata(
     audio_filename: &str,
     source: &str,
     session_type: &str,
+    summary_template_id: &str,
 ) -> Result<()> {
     let metadata_path = folder.join("metadata.json");
     let temp_path = folder.join(".metadata.json.tmp");
@@ -911,7 +919,8 @@ fn write_import_metadata(
         "transcript_file": "transcripts.json",
         "status": "completed",
         "source": source,
-        "session_type": session_type
+        "session_type": session_type,
+        "summary_template_id": summary_template_id
     });
 
     let json_string = serde_json::to_string_pretty(&json)?;
@@ -1247,6 +1256,7 @@ mod tests {
             "audio.mp4",
             "import",
             "online_class",
+            "online_class",
         );
         assert!(result.is_ok(), "write_import_metadata failed: {:?}", result);
 
@@ -1263,6 +1273,7 @@ mod tests {
         assert_eq!(parsed["status"], "completed");
         assert_eq!(parsed["source"], "import");
         assert_eq!(parsed["session_type"], "online_class");
+        assert_eq!(parsed["summary_template_id"], "online_class");
     }
 
     /// Integration test that decodes a real audio file and runs VAD.

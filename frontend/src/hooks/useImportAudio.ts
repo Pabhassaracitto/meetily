@@ -5,6 +5,10 @@ import Analytics from '@/lib/analytics';
 import { applyPinnedSummaryLanguageToMeeting } from '@/lib/summary-language-preferences';
 import { toast } from 'sonner';
 import { SessionType } from '@/lib/session-types';
+import {
+  DEFAULT_BATCH_QUALITY_PROFILE,
+  TranscriptionQualityProfile,
+} from '@/lib/transcription-quality-profiles';
 
 export interface AudioFileInfo {
   path: string;
@@ -53,7 +57,8 @@ export interface UseImportAudioReturn {
     language?: string | null,
     model?: string | null,
     provider?: string | null,
-    sessionType?: SessionType
+    sessionType?: SessionType,
+    qualityProfile?: TranscriptionQualityProfile
   ) => Promise<void>;
   cancelImport: () => Promise<void>;
   reset: () => void;
@@ -211,7 +216,8 @@ export function useImportAudio({
       language?: string | null,
       model?: string | null,
       provider?: string | null,
-      sessionType: SessionType = 'meeting'
+      sessionType: SessionType = 'meeting',
+      qualityProfile: TranscriptionQualityProfile = DEFAULT_BATCH_QUALITY_PROFILE
     ) => {
       isCancelledRef.current = false;
       setStatus('processing');
@@ -226,7 +232,8 @@ export function useImportAudio({
             language: language || 'auto',
             model_provider: provider || '',
             model_name: model || '',
-            session_type: sessionType
+            session_type: sessionType,
+            quality_profile: qualityProfile
           });
         }
 
@@ -237,6 +244,7 @@ export function useImportAudio({
           model: model || null,
           provider: provider || null,
           sessionType,
+          qualityProfile,
         });
       } catch (err: any) {
         setStatus('error');

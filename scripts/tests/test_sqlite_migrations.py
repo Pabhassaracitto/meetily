@@ -49,19 +49,25 @@ class SqliteMigrationTests(unittest.TestCase):
         connection.execute(
             """INSERT INTO processing_runs (
                 id, meeting_id, run_kind, source_kind, status, provider, model_id,
-                started_at, completed_at, created_at, processing_time_ms, metrics_json
-            ) VALUES (?, ?, 'transcription', 'import', 'completed', ?, ?, ?, ?, ?, ?, ?)""",
+                quality_profile, started_at, completed_at, created_at, processing_time_ms, metrics_json
+            ) VALUES (?, ?, 'transcription', 'import', 'completed', ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 "run-1",
                 "session-1",
                 "localWhisper",
                 "large-v3",
+                "high_accuracy_postprocess",
                 "2026-08-08T00:00:00Z",
                 "2026-08-08T00:00:05Z",
                 "2026-08-08T00:00:05Z",
                 5000,
                 '{"segments_transcribed": 12}',
             ),
+        )
+
+        self.assertEqual(
+            connection.execute("SELECT quality_profile FROM processing_runs WHERE id = 'run-1'").fetchone(),
+            ("high_accuracy_postprocess",),
         )
 
         connection.execute("DELETE FROM meetings WHERE id = 'session-1'")

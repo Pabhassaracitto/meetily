@@ -1,4 +1,8 @@
 import type { TranscriptModelProps } from '@/components/TranscriptSettings';
+import {
+  DEFAULT_LIVE_QUALITY_PROFILE,
+  TranscriptionQualityProfile,
+} from '@/lib/transcription-quality-profiles';
 
 export const ACTIVE_TRANSCRIPTION_RUN_METADATA_KEY = 'active_transcription_run_metadata';
 
@@ -11,6 +15,7 @@ export type ProcessingSourceKind = 'live' | 'import' | 'retranscription' | 'reco
 export interface TranscriptionRunMetadata {
   provider?: string | null;
   modelId?: string | null;
+  qualityProfile?: string | null;
   languageHint?: string | null;
   vadEngine?: string | null;
   vadConfig?: Record<string, unknown> | null;
@@ -28,6 +33,7 @@ export interface ProcessingRun {
   status: 'completed';
   provider: string;
   model_id: string;
+  quality_profile?: TranscriptionQualityProfile | null;
   language_hint?: string | null;
   vad_engine?: string | null;
   vad_config_json?: string | null;
@@ -53,6 +59,7 @@ export function createLiveTranscriptionRunMetadata(
   return {
     provider: config.provider || 'unknown',
     modelId: config.model || 'unknown',
+    qualityProfile: DEFAULT_LIVE_QUALITY_PROFILE,
     languageHint: selectedLanguage && selectedLanguage !== 'auto' ? selectedLanguage : null,
     vadEngine: 'silero',
     vadConfig: {

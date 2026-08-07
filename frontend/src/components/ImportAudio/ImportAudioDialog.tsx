@@ -39,7 +39,11 @@ import { LANGUAGES } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { DEFAULT_SESSION_TYPE, SessionType } from '@/lib/session-types';
-
+import {
+  DEFAULT_BATCH_QUALITY_PROFILE,
+  TranscriptionQualityProfile,
+} from '@/lib/transcription-quality-profiles';
+import { TranscriptionQualityProfileSelector } from '@/components/TranscriptionQualityProfileSelector';
 
 interface ImportAudioDialogProps {
   open: boolean;
@@ -78,6 +82,9 @@ export function ImportAudioDialog({
 
   const [title, setTitle] = useState('');
   const [sessionType, setSessionType] = useState<SessionType>(DEFAULT_SESSION_TYPE);
+  const [qualityProfile, setQualityProfile] = useState<TranscriptionQualityProfile>(
+    DEFAULT_BATCH_QUALITY_PROFILE
+  );
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
@@ -140,6 +147,7 @@ export function ImportAudioDialog({
       resetSelection();
       setTitle('');
       setSessionType(DEFAULT_SESSION_TYPE);
+      setQualityProfile(DEFAULT_BATCH_QUALITY_PROFILE);
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
       setShowAdvanced(false);
@@ -197,7 +205,8 @@ export function ImportAudioDialog({
       isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang,
       selectedModel?.name || null,
       selectedModel?.provider || null,
-      sessionType
+      sessionType,
+      qualityProfile
     );
   };
 
@@ -310,6 +319,12 @@ export function ImportAudioDialog({
                     id="import-session-type"
                     value={sessionType}
                     onValueChange={setSessionType}
+                  />
+
+                  <TranscriptionQualityProfileSelector
+                    id="import-quality-profile"
+                    value={qualityProfile}
+                    onValueChange={setQualityProfile}
                   />
 
                   <Button variant="outline" size="sm" onClick={handleSelectFile} className="w-full">

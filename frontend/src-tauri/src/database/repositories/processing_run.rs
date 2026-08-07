@@ -42,6 +42,11 @@ impl ProcessingRunsRepository {
             "unknown",
             MAX_FIELD_LENGTH,
         )?;
+        let quality_profile = optional_field(
+            metadata.and_then(|value| value.quality_profile.as_deref()),
+            "quality_profile",
+            MAX_FIELD_LENGTH,
+        )?;
         let language_hint = optional_field(
             metadata.and_then(|value| value.language_hint.as_deref()),
             "language_hint",
@@ -76,9 +81,9 @@ impl ProcessingRunsRepository {
             r#"
             INSERT INTO processing_runs (
                 id, meeting_id, run_kind, source_kind, status, provider, model_id,
-                language_hint, vad_engine, vad_config_json, started_at, completed_at,
-                processing_time_ms, metrics_json, parent_run_id, created_at
-            ) VALUES (?, ?, 'transcription', ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                quality_profile, language_hint, vad_engine, vad_config_json, started_at,
+                completed_at, processing_time_ms, metrics_json, parent_run_id, created_at
+            ) VALUES (?, ?, 'transcription', ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&run_id)
@@ -86,6 +91,7 @@ impl ProcessingRunsRepository {
         .bind(source_kind)
         .bind(provider)
         .bind(model_id)
+        .bind(quality_profile)
         .bind(language_hint)
         .bind(vad_engine)
         .bind(vad_config_json)

@@ -37,4 +37,8 @@ Bản thay đổi đầu tiên sau các quyết định này triển khai nền 
 
 ## Processing provenance đang triển khai
 
-Mỗi transcript được lưu từ live capture, import, retranscription hoặc recovery giờ tạo một `processing_runs` record trong cùng transaction với transcript. Record lưu source, provider/model, language hint, VAD config, thời gian xử lý và aggregate metrics; repository từ chối các key nội dung như `transcript`, `text`, `audio`, `prompt`, API key hoặc embedding trong metadata. API `api_get_processing_runs` đã sẵn sàng cho UI history/compare ở milestone tiếp theo.
+Mỗi transcript được lưu từ live capture, import, retranscription hoặc recovery giờ tạo một `processing_runs` record trong cùng transaction với transcript. Record lưu source, provider/model, quality profile, language hint, VAD config, thời gian xử lý và aggregate metrics; repository từ chối các key nội dung như `transcript`, `text`, `audio`, `prompt`, API key hoặc embedding trong metadata. API `api_get_processing_runs` và provenance card trên session detail đã sẵn sàng cho history/compare ở milestone tiếp theo.
+
+## Quality profiles đang triển khai
+
+Import và retranscription có các profile `balanced_batch`, `high_accuracy_postprocess` và `long_form_study`. Profile chỉ điều chỉnh VAD pause bridge/segment cap và được ghi lại trong provenance; nó **không** bí mật thay model, provider hay data route. `high_accuracy_postprocess` giữ nguyên hành vi batch trước đây (2.000 ms) để tương thích. Sherpa vẫn chưa được bật: benchmark profile này là baseline bắt buộc trước A/B spike Silero–Sherpa.

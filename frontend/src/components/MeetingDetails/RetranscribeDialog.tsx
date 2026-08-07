@@ -23,6 +23,11 @@ import { useConfig } from '@/contexts/ConfigContext';
 import { LANGUAGES } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 import Analytics from '@/lib/analytics';
+import {
+  DEFAULT_BATCH_QUALITY_PROFILE,
+  TranscriptionQualityProfile,
+} from '@/lib/transcription-quality-profiles';
+import { TranscriptionQualityProfileSelector } from '@/components/TranscriptionQualityProfileSelector';
 
 interface RetranscribeDialogProps {
   open: boolean;
@@ -62,6 +67,9 @@ export function RetranscribeDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<RetranscriptionProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qualityProfile, setQualityProfile] = useState<TranscriptionQualityProfile>(
+    DEFAULT_BATCH_QUALITY_PROFILE
+  );
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
 
   // Use centralized model fetching hook
@@ -111,6 +119,7 @@ export function RetranscribeDialog({
       setIsProcessing(false);
       setProgress(null);
       setError(null);
+      setQualityProfile(DEFAULT_BATCH_QUALITY_PROFILE);
       setSelectedLang(selectedLanguage || 'auto');
 
       // Fetch available models using centralized hook
@@ -211,7 +220,8 @@ export function RetranscribeDialog({
       await Analytics.track('enhance_transcript_started', {
         language: isParakeetModel ? 'auto' : (selectedLang === 'auto' ? 'auto' : selectedLang),
         model_provider: selectedModelDetails?.provider || '',
-        model_name: selectedModelDetails?.name || ''
+        model_name: selectedModelDetails?.name || '',
+        quality_profile: qualityProfile
       });
 
       await invoke('start_retranscription_command', {
@@ -220,6 +230,7 @@ export function RetranscribeDialog({
         language: languageToSend,
         model: selectedModelDetails?.name || null,
         provider: selectedModelDetails?.provider || null,
+        qualityProfile,
       });
     } catch (err: any) {
       setIsProcessing(false);
@@ -358,6 +369,15 @@ export function RetranscribeDialog({
                 Choose a transcription model
               </p>
             </div>
+          )}
+
+          {!isProcessing && !error && (
+            <TranscriptionQualityProfileSelector
+              id="retranscription-quality-profile"
+              value={qualityProfile}
+              onValueChange={setQualityProfile}
+              disabled={isProcessing}
+            />
           )}
 
           {isProcessing && progress && (

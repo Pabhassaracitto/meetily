@@ -7,6 +7,7 @@ import {
   formatProcessingDuration,
   ProcessingRun,
 } from '@/lib/processing-runs';
+import { getQualityProfileOption } from '@/lib/transcription-quality-profiles';
 
 interface ProcessingProvenanceProps {
   meetingId: string;
@@ -65,6 +66,9 @@ export function ProcessingProvenance({ meetingId }: ProcessingProvenanceProps) {
   const source = SOURCE_LABELS[latestRun.source_kind] ?? latestRun.source_kind;
   const language = latestRun.language_hint ? ` · ${latestRun.language_hint}` : '';
   const vad = latestRun.vad_engine ? ` · VAD: ${latestRun.vad_engine}` : '';
+  const qualityProfile = latestRun.quality_profile
+    ? ` · ${getQualityProfileOption(latestRun.quality_profile).label}`
+    : '';
 
   return (
     <div
@@ -75,7 +79,7 @@ export function ProcessingProvenance({ meetingId }: ProcessingProvenanceProps) {
         <Cpu className="h-3.5 w-3.5" />
         {latestRun.provider}/{latestRun.model_id}
       </span>
-      <span>{source}{language}{vad}</span>
+      <span>{source}{qualityProfile}{language}{vad}</span>
       {duration && (
         <span className="inline-flex items-center gap-1">
           <Gauge className="h-3.5 w-3.5" />

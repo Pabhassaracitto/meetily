@@ -10,6 +10,7 @@ use crate::{
 };
 use super::common::{create_transcript_segments, split_segment_at_silence, write_transcripts_json};
 use super::constants::AUDIO_EXTENSIONS;
+use super::quality_profile::QualityProfile;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
 use crate::parakeet_engine::ParakeetEngine;
 use crate::state::AppState;
@@ -50,12 +51,6 @@ impl Drop for RetranscriptionGuard {
         RETRANSCRIPTION_IN_PROGRESS.store(false, Ordering::SeqCst);
     }
 }
-
-/// VAD redemption time in milliseconds - bridges natural pauses in speech
-/// Batch processing needs longer redemption (2000ms) than live pipeline (400ms)
-/// because the entire file is processed at once by VAD, and 400ms fragments
-/// speech at every natural sentence/topic pause (500ms-2s)
-const VAD_REDEMPTION_TIME_MS: u32 = 2000;
 
 /// Progress update emitted during retranscription
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +95,7 @@ pub async fn start_retranscription<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    quality_profile: Option<String>,
 ) -> Result<RetranscriptionResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = RetranscriptionGuard::acquire().map_err(|e| anyhow!(e))?;
@@ -107,8 +103,19 @@ pub async fn start_retranscription<R: Runtime>(
     // Reset cancellation flag
     RETRANSCRIPTION_CANCELLED.store(false, Ordering::SeqCst);
 
+    let quality_profile = QualityProfile::from_optional(quality_profile.as_deref())
+        .map_err(|error| anyhow!(error))?;
     let use_parakeet = provider.as_deref() == Some("parakeet");
-    let result = run_retranscription(app.clone(), meeting_id.clone(), meeting_folder_path, language, model, provider).await;
+    let result = run_retranscription(
+        app.clone(),
+        meeting_id.clone(),
+        meeting_folder_path,
+        language,
+        model,
+        provider,
+        quality_profile,
+    )
+    .await;
 
     // Unload the engine after the batch job (success, failure, or cancellation)
     super::common::unload_engine_after_batch(use_parakeet).await;
@@ -182,9 +189,11 @@ async fn run_retranscription<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    quality_profile: QualityProfile,
 ) -> Result<RetranscriptionResult> {
     let processing_started_at = chrono::Utc::now().to_rfc3339();
     let processing_timer = std::time::Instant::now();
+    let quality_config = quality_profile.config();
     let folder_path = PathBuf::from(&meeting_folder_path);
     let audio_path = find_audio_file(&folder_path)?;
 
@@ -192,8 +201,12 @@ async fn run_retranscription<R: Runtime>(
     let use_parakeet = provider.as_deref() == Some("parakeet");
 
     info!(
-        "Starting retranscription for meeting {} with language {:?}, model {:?}, provider {:?}",
-        meeting_id, language, model, provider
+        "Starting retranscription for meeting {} with quality_profile {}, language {:?}, model {:?}, provider {:?}",
+        meeting_id,
+        quality_profile,
+        language,
+        model,
+        provider
     );
 
     // Emit progress: decoding
@@ -249,7 +262,7 @@ async fn run_retranscription<R: Runtime>(
     let speech_segments = tokio::task::spawn_blocking(move || {
         get_speech_chunks_with_progress(
             &audio_samples,
-            VAD_REDEMPTION_TIME_MS,
+            quality_config.vad_redemption_ms,
             |vad_progress, segments_found| {
                 // Map VAD progress (0-100) to overall progress (20-25)
                 let overall_progress = 20 + (vad_progress as f32 * 0.05) as u32;
@@ -271,7 +284,12 @@ async fn run_retranscription<R: Runtime>(
     .map_err(|e| anyhow!("VAD processing failed: {}", e))?;
 
     let total_segments = speech_segments.len();
-    info!("VAD detected {} speech segments (redemption_time={}ms)", total_segments, VAD_REDEMPTION_TIME_MS);
+    info!(
+        "VAD detected {} speech segments (profile={}, redemption_time={}ms)",
+        total_segments,
+        quality_profile,
+        quality_config.vad_redemption_ms
+    );
 
     // Diagnostic: log segment duration distribution
     if !speech_segments.is_empty() {
@@ -321,18 +339,18 @@ async fn run_retranscription<R: Runtime>(
     // Split very long segments at silence boundaries for better transcription quality.
     // Hard cuts at arbitrary sample positions lose words at boundaries. Instead, scan
     // for the lowest-energy window near the target split point and cut there.
-    const MAX_SEGMENT_SAMPLES: usize = 25 * 16000; // 25 seconds at 16kHz
+    let max_segment_samples = quality_config.max_segment_seconds * 16000;
 
     let mut processable_segments: Vec<crate::audio::vad::SpeechSegment> = Vec::new();
     for segment in &speech_segments {
-        if segment.samples.len() > MAX_SEGMENT_SAMPLES {
+        if segment.samples.len() > max_segment_samples {
             debug!(
                 "Splitting large segment ({:.0}ms, {} samples) at silence boundaries",
                 segment.end_timestamp_ms - segment.start_timestamp_ms,
                 segment.samples.len()
             );
 
-            let sub_segments = split_segment_at_silence(segment, MAX_SEGMENT_SAMPLES);
+            let sub_segments = split_segment_at_silence(segment, max_segment_samples);
             debug!("Split into {} sub-segments", sub_segments.len());
             processable_segments.extend(sub_segments);
         } else {
@@ -456,11 +474,13 @@ async fn run_retranscription<R: Runtime>(
             (if use_parakeet { "parakeet" } else { "localWhisper" }).to_string(),
         ),
         model_id: Some(resolved_model_id),
+        quality_profile: Some(quality_profile.to_string()),
         language_hint: language.clone(),
         vad_engine: Some("silero".to_string()),
         vad_config: Some(serde_json::json!({
-            "mode": "batch",
-            "redemption_ms": VAD_REDEMPTION_TIME_MS,
+            "mode": quality_config.mode,
+            "redemption_ms": quality_config.vad_redemption_ms,
+            "max_segment_seconds": quality_config.max_segment_seconds,
             "sample_rate_hz": 16000
         })),
         started_at: Some(processing_started_at),
@@ -852,6 +872,7 @@ pub async fn start_retranscription_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    quality_profile: Option<String>,
 ) -> Result<RetranscriptionStarted, String> {
 
     // Check if retranscription is already in progress (guard will be acquired in start_retranscription)
@@ -871,6 +892,7 @@ pub async fn start_retranscription_command<R: Runtime>(
             language,
             model,
             provider,
+            quality_profile,
         )
         .await;
 
@@ -998,9 +1020,9 @@ mod tests {
     }
 
     #[test]
-    fn test_vad_redemption_time_constant() {
-        // Batch processing uses 2000ms to bridge natural pauses in full-file VAD
-        assert_eq!(VAD_REDEMPTION_TIME_MS, 2000);
+    fn test_default_batch_quality_profile_preserves_existing_vad_behavior() {
+        let profile = QualityProfile::from_optional(None).expect("default profile");
+        assert_eq!(profile.config().vad_redemption_ms, 2000);
     }
 
     #[test]

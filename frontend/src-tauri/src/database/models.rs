@@ -118,6 +118,8 @@ pub struct TranscriptionRunMetadata {
     #[serde(default)]
     pub model_id: Option<String>,
     #[serde(default)]
+    pub quality_profile: Option<String>,
+    #[serde(default)]
     pub language_hint: Option<String>,
     #[serde(default)]
     pub vad_engine: Option<String>,
@@ -141,6 +143,7 @@ pub struct ProcessingRun {
     pub status: String,
     pub provider: String,
     pub model_id: String,
+    pub quality_profile: Option<String>,
     pub language_hint: Option<String>,
     pub vad_engine: Option<String>,
     pub vad_config_json: Option<String>,

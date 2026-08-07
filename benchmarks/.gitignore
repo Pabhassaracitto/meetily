@@ -1,0 +1,13 @@
+# Never commit customer/rights-restricted benchmark material.
+*.jsonl
+*.wav
+*.mp3
+*.m4a
+*.mp4
+*.webm
+*.flac
+*.ogg
+reports/
+raw/
+references/
+hypotheses/

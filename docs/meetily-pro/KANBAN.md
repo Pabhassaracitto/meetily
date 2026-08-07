@@ -1,6 +1,6 @@
 # Meetily Pro — Kanban khởi tạo
 
-> **Snapshot:** 2026-08-07 • Đây là board khởi tạo sau khảo sát repo, không phải trạng thái implementation.
+> **Snapshot:** 2026-08-07 • Kickoff cập nhật 2026-08-08. `D-001`–`D-004` đã chốt trong [DECISIONS](./DECISIONS.md); vertical slice session mode và benchmark harness đã bắt đầu, nhưng corpus/quyền sử dụng vẫn là gate.
 > Điểm là relative effort: **1** nhỏ, **2** nhỏ-vừa, **3** vừa, **5** lớn, **8** nên tách trước sprint planning.
 
 ## Quy ước board

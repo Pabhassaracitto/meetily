@@ -29,3 +29,7 @@ Bản thay đổi đầu tiên sau các quyết định này triển khai nền 
 - template built-in `online_class` và `dharma_talk`, tự chọn theo session type khi mở summary.
 
 Đây mới là vertical slice M1, chưa phải claim hoàn tất processing provenance, glossary, export, audit hoặc compliance controls.
+
+## Quality foundation đang triển khai
+
+Đã thêm [`benchmarks/`](../../benchmarks/README.md) cùng `scripts/benchmark_transcription.py` để so sánh WER/CER, term accuracy, latency và real-time factor mà không đưa raw transcript/audio vào report Git. Harness đã có unit test; corpus tiếng Việt/lớp học/pháp thoại có quyền sử dụng và ngưỡng phát hành vẫn là gate bắt buộc của `PRO-003`.

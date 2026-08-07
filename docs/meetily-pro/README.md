@@ -132,6 +132,7 @@ Các con số dưới đây là **mục tiêu để benchmark xác nhận**, kh�
 ## 8. Tài liệu thực thi
 
 - [Quyết định đã chốt](./DECISIONS.md)
+- [Benchmark protocol](../../benchmarks/README.md)
 - [Milestones / roadmap](./MILESTONES.md)
 - [Kanban khởi tạo](./KANBAN.md)
 - [Handoff kỹ thuật, data model, risk và first sprint](./HANDOFF.md)

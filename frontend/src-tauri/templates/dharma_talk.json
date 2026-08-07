@@ -1,0 +1,44 @@
+{
+  "name": "Dharma Talk Notes",
+  "description": "Evidence-aware notes for a Buddhist Dharma talk, study session, or Q&A. Distinguishes direct transcript excerpts from AI summaries and personal practice notes.",
+  "sections": [
+    {
+      "title": "Talk Context",
+      "instruction": "Record the title, teacher/speaker, tradition, source, date, and setting only when they are explicitly present in the session metadata or transcript. Mark unavailable details as not stated; never infer lineage or source texts.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Main Themes",
+      "instruction": "Summarize the main themes in neutral language grounded in the transcript. This section is a summary, not a doctrinal ruling or a substitute for the teacher's words.",
+      "format": "list"
+    },
+    {
+      "title": "Terms & Explanations",
+      "instruction": "List Pāli, Sanskrit, Hán–Việt, Vietnamese, or other terms that were explicitly spoken. Preserve uncertain spellings, do not silently normalize them, and include the transcript reference or timestamp.",
+      "format": "list",
+      "item_format": "| **Term as heard** | **Explanation given in the talk** | **Reference** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Direct Transcript Excerpts",
+      "instruction": "Include only short, exact excerpts supported by the transcript. Every item must contain its timestamp or transcript reference. Do not invent quotations, sutta references, translations, or attributions.",
+      "format": "list",
+      "item_format": "| **Exact excerpt** | **Timestamp / transcript reference** |\n| --- | --- |"
+    },
+    {
+      "title": "Questions & Responses",
+      "instruction": "List questions and responses that actually appear in the session. If a question is unanswered, label it unresolved rather than supplying an answer.",
+      "format": "list",
+      "item_format": "| **Question** | **Response or unresolved status** | **Reference** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Practice Reflections",
+      "instruction": "List practices, contemplations, or suggestions explicitly offered in the talk. Clearly phrase this as a session-derived note, not personal advice from the AI.",
+      "format": "list"
+    },
+    {
+      "title": "Editor Notes & Items to Verify",
+      "instruction": "Separate ambiguous audio, uncertain term spellings, and editor notes from the talk itself. Never fill gaps with generated doctrine.",
+      "format": "list"
+    }
+  ]
+}

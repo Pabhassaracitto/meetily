@@ -7,6 +7,7 @@ import { useRecordingState } from './RecordingStateContext';
 import { transcriptService } from '@/services/transcriptService';
 import { recordingService } from '@/services/recordingService';
 import { indexedDBService } from '@/services/indexedDBService';
+import { normalizeSessionType } from '@/lib/session-types';
 
 interface TranscriptContextType {
   transcripts: Transcript[];
@@ -107,6 +108,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
 
             // Use a better fallback that matches the backend's naming pattern
             const effectiveTitle = meetingName || `Meeting ${new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')}`;
+            const sessionType = normalizeSessionType(sessionStorage.getItem('active_session_type'));
 
             // Initialize meeting metadata in IndexedDB
             await indexedDBService.saveMeetingMetadata({
@@ -116,7 +118,8 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
               lastUpdated: Date.now(),
               transcriptCount: 0,
               savedToSQLite: false,
-              folderPath: undefined // Will update shortly
+              folderPath: undefined, // Will update shortly
+              sessionType,
             });
 
             // Synchronize meeting title to state (fixes tray stop title issue)

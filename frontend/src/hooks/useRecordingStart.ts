@@ -8,6 +8,7 @@ import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import { toast } from 'sonner';
+import { getSessionTypeOption, SessionType } from '@/lib/session-types';
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -28,6 +29,7 @@ interface UseRecordingStartReturn {
 export function useRecordingStart(
   isRecording: boolean,
   setIsRecording: (value: boolean) => void,
+  sessionType: SessionType,
   showModal?: (name: 'modelSelector', message?: string) => void
 ): UseRecordingStartReturn {
   const [isAutoStarting, setIsAutoStarting] = useState(false);
@@ -37,7 +39,13 @@ export function useRecordingStart(
   const { selectedDevices } = useConfig();
   const { setStatus } = useRecordingState();
 
-  // Generate meeting title with timestamp
+  // Snapshot the selected mode at recording start. The stop flow can run after
+  // navigation or a reload, so it reads this value when persisting the session.
+  const snapshotSessionType = useCallback(() => {
+    sessionStorage.setItem('active_session_type', sessionType);
+  }, [sessionType]);
+
+  // Generate a mode-aware session title with a timestamp.
   const generateMeetingTitle = useCallback(() => {
     const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
@@ -46,8 +54,9 @@ export function useRecordingStart(
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `Meeting ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
-  }, []);
+    const prefix = getSessionTypeOption(sessionType).label;
+    return `${prefix} ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
+  }, [sessionType]);
 
   // Check if Parakeet transcription model is ready
   const checkParakeetReady = useCallback(async (): Promise<boolean> => {
@@ -115,7 +124,8 @@ export function useRecordingStart(
       setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
       // Start the actual backend recording
-      console.log('Starting backend recording with meeting:', randomTitle);
+      snapshotSessionType();
+      console.log('Starting backend recording with meeting:', randomTitle, 'and session type:', sessionType);
       await recordingService.startRecordingWithDevices(
         selectedDevices?.micDevice || null,
         selectedDevices?.systemDevice || null,
@@ -141,7 +151,7 @@ export function useRecordingStart(
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkParakeetReady, checkIfModelDownloading, selectedDevices, showModal, setStatus]);
+  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkParakeetReady, checkIfModelDownloading, selectedDevices, showModal, setStatus, snapshotSessionType, sessionType]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -184,7 +194,8 @@ export function useRecordingStart(
             // Set STARTING status before initiating backend recording
             setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
-            console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle);
+            snapshotSessionType();
+            console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle, 'and session type:', sessionType);
             const result = await recordingService.startRecordingWithDevices(
               selectedDevices?.micDevice || null,
               selectedDevices?.systemDevice || null,
@@ -228,6 +239,8 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    snapshotSessionType,
+    sessionType,
   ]);
 
   // Listen for direct recording trigger from sidebar when already on home page
@@ -271,7 +284,8 @@ export function useRecordingStart(
         // Set STARTING status before initiating backend recording
         setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
-        console.log('Starting backend recording with meeting:', generatedMeetingTitle);
+        snapshotSessionType();
+        console.log('Starting backend recording with meeting:', generatedMeetingTitle, 'and session type:', sessionType);
         const result = await recordingService.startRecordingWithDevices(
           selectedDevices?.micDevice || null,
           selectedDevices?.systemDevice || null,
@@ -317,6 +331,8 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    snapshotSessionType,
+    sessionType,
   ]);
 
   return {

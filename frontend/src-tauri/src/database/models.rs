@@ -1,6 +1,62 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::fmt;
+use std::str::FromStr;
+
+/// The user-facing purpose of a captured session.
+///
+/// The database stores this as a constrained TEXT value so existing Meetily
+/// installations can migrate without changing their meeting IDs or artifacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionType {
+    #[default]
+    Meeting,
+    OnlineClass,
+    DharmaTalk,
+}
+
+impl SessionType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Meeting => "meeting",
+            Self::OnlineClass => "online_class",
+            Self::DharmaTalk => "dharma_talk",
+        }
+    }
+
+    /// Use the legacy meeting mode when a caller does not provide a type.
+    /// Unknown values are rejected rather than silently being stored as a new
+    /// unsupported session category.
+    pub fn from_optional(value: Option<&str>) -> Result<Self, String> {
+        match value.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(value) => value.parse(),
+            None => Ok(Self::default()),
+        }
+    }
+}
+
+impl fmt::Display for SessionType {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for SessionType {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "meeting" => Ok(Self::Meeting),
+            "online_class" => Ok(Self::OnlineClass),
+            "dharma_talk" => Ok(Self::DharmaTalk),
+            _ => Err(format!(
+                "Unsupported session type '{value}'. Expected one of: meeting, online_class, dharma_talk"
+            )),
+        }
+    }
+}
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct MeetingModel {
@@ -9,6 +65,7 @@ pub struct MeetingModel {
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
     pub folder_path: Option<String>,
+    pub session_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
@@ -104,6 +161,36 @@ impl Setting {
         self.custom_openai_config.as_ref().and_then(|json| {
             serde_json::from_str(json).ok()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SessionType;
+
+    #[test]
+    fn session_type_defaults_to_meeting_when_omitted() {
+        assert_eq!(
+            SessionType::from_optional(None).expect("default session type"),
+            SessionType::Meeting
+        );
+    }
+
+    #[test]
+    fn session_type_parses_supported_values() {
+        assert_eq!(
+            SessionType::from_optional(Some("online_class")).expect("online class"),
+            SessionType::OnlineClass
+        );
+        assert_eq!(
+            SessionType::from_optional(Some("dharma_talk")).expect("Dharma talk"),
+            SessionType::DharmaTalk
+        );
+    }
+
+    #[test]
+    fn session_type_rejects_unknown_values() {
+        assert!(SessionType::from_optional(Some("webinar")).is_err());
     }
 }
 

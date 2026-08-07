@@ -21,12 +21,15 @@ import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { DEFAULT_SESSION_TYPE, SessionType } from '@/lib/session-types';
 
 export default function Home() {
   // Local page state (not moved to contexts)
   const [isRecording, setIsRecordingState] = useState(false);
   const [barHeights, setBarHeights] = useState(['58%', '76%', '58%']);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [sessionType, setSessionType] = useState<SessionType>(DEFAULT_SESSION_TYPE);
 
   // Use contexts for state management
   const { meetingTitle } = useTranscripts();
@@ -41,7 +44,12 @@ export default function Home() {
   const { setIsMeetingActive, isCollapsed: sidebarCollapsed, refetchMeetings } = useSidebar();
   const { modals, messages, showModal, hideModal } = useModalState(transcriptModelConfig);
   const { isRecordingDisabled, setIsRecordingDisabled } = useRecordingStateSync(isRecording, setIsRecordingState, setIsMeetingActive);
-  const { handleRecordingStart } = useRecordingStart(isRecording, setIsRecordingState, showModal);
+  const { handleRecordingStart } = useRecordingStart(
+    isRecording,
+    setIsRecordingState,
+    sessionType,
+    showModal
+  );
 
   // Get handleRecordingStop function and setIsStopping (state comes from global context)
   const { handleRecordingStop, setIsStopping } = useRecordingStop(
@@ -231,22 +239,32 @@ export default function Home() {
                 }}
               >
                 <div className="w-2/3 max-w-[750px] flex justify-center">
-                  <div className="bg-white rounded-full shadow-lg flex items-center">
-                    <RecordingControls
-                      isRecording={recordingState.isRecording}
-                      onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
-                      onRecordingStart={handleRecordingStart}
-                      onTranscriptReceived={() => { }} // Not actually used by RecordingControls
-                      onStopInitiated={() => setIsStopping(true)}
-                      barHeights={barHeights}
-                      onTranscriptionError={(message) => {
-                        showModal('errorAlert', message);
-                      }}
-                      isRecordingDisabled={isRecordingDisabled}
-                      isParentProcessing={isProcessingStop}
-                      selectedDevices={selectedDevices}
-                      meetingName={meetingTitle}
-                    />
+                  <div className="flex items-center gap-2">
+                    {!recordingState.isRecording && !isProcessingStop && (
+                      <SessionTypeSelector
+                        compact
+                        value={sessionType}
+                        onValueChange={setSessionType}
+                        disabled={isRecordingDisabled}
+                      />
+                    )}
+                    <div className="bg-white rounded-full shadow-lg flex items-center">
+                      <RecordingControls
+                        isRecording={recordingState.isRecording}
+                        onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
+                        onRecordingStart={handleRecordingStart}
+                        onTranscriptReceived={() => { }} // Not actually used by RecordingControls
+                        onStopInitiated={() => setIsStopping(true)}
+                        barHeights={barHeights}
+                        onTranscriptionError={(message) => {
+                          showModal('errorAlert', message);
+                        }}
+                        isRecordingDisabled={isRecordingDisabled}
+                        isParentProcessing={isProcessingStop}
+                        selectedDevices={selectedDevices}
+                        meetingName={meetingTitle}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

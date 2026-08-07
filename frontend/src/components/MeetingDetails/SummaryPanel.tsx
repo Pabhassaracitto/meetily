@@ -21,12 +21,14 @@ import {
   saveMeetingSummaryLanguage,
   SummaryLanguageStorage,
 } from '@/lib/summary-language-preferences';
+import { getSessionTypeOption, SessionType } from '@/lib/session-types';
 
 interface SummaryPanelProps {
   meeting: {
     id: string;
     title: string;
     created_at: string;
+    session_type?: SessionType;
   };
   meetingTitle: string;
   onTitleChange: (title: string) => void;
@@ -117,6 +119,7 @@ export function SummaryPanel({
   const { addRecent } = useRecentLanguages();
 
   const effectiveLangLabel = summaryLang ? labelForCode(summaryLang) : 'Auto';
+  const sessionType = getSessionTypeOption(meeting.session_type);
   const isLocalFallbackLanguage = summaryLangStorage === 'local_fallback';
   const autoSubtitle = isLocalFallbackLanguage
     ? 'Saved on this device for folderless meetings'
@@ -256,6 +259,14 @@ export function SummaryPanel({
     <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
       {/* Title area */}
       <div className="p-4 border-b border-gray-200">
+        <div className="mb-3 flex items-center justify-center">
+          <span
+            className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
+            title={sessionType.description}
+          >
+            {sessionType.label}
+          </span>
+        </div>
         {/* <EditableTitle
           title={meetingTitle}
           isEditing={isEditingTitle}

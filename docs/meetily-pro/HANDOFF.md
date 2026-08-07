@@ -1,18 +1,20 @@
 # Meetily Pro — Handoff kỹ thuật và vận hành
 
-> **Prepared:** 2026-08-07 (UTC)
+> **Prepared:** 2026-08-07 (UTC), kickoff updated 2026-08-08 (Asia/Colombo)
 > **Branch:** `arena/019fdda3-meetily`
-> **Baseline commit:** `0281737d87d26352fb0adc78c8c0975f691b23d1`
-> **Working tree at handoff:** chỉ thêm tài liệu kế hoạch trong `docs/meetily-pro/`; chưa thay đổi runtime/code/dependency.
+> **Repository baseline:** `0281737d87d26352fb0adc78c8c0975f691b23d1`
+> **Planning commit:** `95dcd57` (`docs: add Meetily Pro roadmap and handoff`)
+> **Kickoff implementation:** session-type vertical slice is now underway; see [DECISIONS](./DECISIONS.md) for the current delivered scope and the remaining gates.
 
 ## 1. Bàn giao nhanh cho người nhận việc
 
 ### Đọc theo thứ tự
 
-1. [README](./README.md) — mục tiêu, repo findings, safety boundaries.
-2. [MILESTONES](./MILESTONES.md) — thứ tự delivery/gates.
-3. [KANBAN](./KANBAN.md) — card IDs, dependency, definition of done.
-4. Phần này — file map, kiến trúc target, migration/API/test plan.
+1. [DECISIONS](./DECISIONS.md) — các lựa chọn product owner đã chốt.
+2. [README](./README.md) — mục tiêu, repo findings, safety boundaries.
+3. [MILESTONES](./MILESTONES.md) — thứ tự delivery/gates.
+4. [KANBAN](./KANBAN.md) — card IDs, dependency, definition of done.
+5. Phần này — file map, kiến trúc target, migration/API/test plan.
 
 ### Không được làm ngay
 

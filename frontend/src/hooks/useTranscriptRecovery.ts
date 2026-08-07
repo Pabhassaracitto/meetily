@@ -10,6 +10,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { indexedDBService, MeetingMetadata, StoredTranscript } from '@/services/indexedDBService';
 import { storageService } from '@/services/storageService';
 import { applyPinnedSummaryLanguageToMeeting } from '@/lib/summary-language-preferences';
+import { normalizeSessionType } from '@/lib/session-types';
 import { toast } from 'sonner';
 
 interface AudioRecoveryStatus {
@@ -179,7 +180,8 @@ export function useTranscriptRecovery(): UseTranscriptRecoveryReturn {
       const saveResponse = await storageService.saveMeeting(
         metadata.title,
         formattedTranscripts,
-        folderPath ?? null
+        folderPath ?? null,
+        normalizeSessionType(metadata.sessionType)
       );
 
       const savedMeetingId = saveResponse.meeting_id;

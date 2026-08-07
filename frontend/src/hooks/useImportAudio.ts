@@ -4,6 +4,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import Analytics from '@/lib/analytics';
 import { applyPinnedSummaryLanguageToMeeting } from '@/lib/summary-language-preferences';
 import { toast } from 'sonner';
+import { SessionType } from '@/lib/session-types';
 
 export interface AudioFileInfo {
   path: string;
@@ -51,7 +52,8 @@ export interface UseImportAudioReturn {
     title: string,
     language?: string | null,
     model?: string | null,
-    provider?: string | null
+    provider?: string | null,
+    sessionType?: SessionType
   ) => Promise<void>;
   cancelImport: () => Promise<void>;
   reset: () => void;
@@ -208,7 +210,8 @@ export function useImportAudio({
       title: string,
       language?: string | null,
       model?: string | null,
-      provider?: string | null
+      provider?: string | null,
+      sessionType: SessionType = 'meeting'
     ) => {
       isCancelledRef.current = false;
       setStatus('processing');
@@ -222,7 +225,8 @@ export function useImportAudio({
             duration_seconds: fileInfo.duration_seconds.toString(),
             language: language || 'auto',
             model_provider: provider || '',
-            model_name: model || ''
+            model_name: model || '',
+            session_type: sessionType
           });
         }
 
@@ -232,6 +236,7 @@ export function useImportAudio({
           language: language || null,
           model: model || null,
           provider: provider || null,
+          sessionType,
         });
       } catch (err: any) {
         setStatus('error');

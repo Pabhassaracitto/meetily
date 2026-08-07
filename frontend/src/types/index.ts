@@ -1,3 +1,5 @@
+import type { SessionType } from '@/lib/session-types';
+
 export interface Message {
   id: string;
   content: string;
@@ -91,6 +93,7 @@ export interface MeetingMetadata {
   title: string;
   created_at: string;
   updated_at: string;
+  session_type: SessionType;
   folder_path?: string;
 }
 

@@ -37,6 +37,8 @@ import { useRouter } from 'next/navigation';
 import { useSidebar } from '../Sidebar/SidebarProvider';
 import { LANGUAGES } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
+import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { DEFAULT_SESSION_TYPE, SessionType } from '@/lib/session-types';
 
 
 interface ImportAudioDialogProps {
@@ -75,6 +77,7 @@ export function ImportAudioDialog({
   const { selectedLanguage, transcriptModelConfig } = useConfig();
 
   const [title, setTitle] = useState('');
+  const [sessionType, setSessionType] = useState<SessionType>(DEFAULT_SESSION_TYPE);
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
@@ -136,6 +139,7 @@ export function ImportAudioDialog({
       reset();
       resetSelection();
       setTitle('');
+      setSessionType(DEFAULT_SESSION_TYPE);
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
       setShowAdvanced(false);
@@ -192,7 +196,8 @@ export function ImportAudioDialog({
       title || fileInfo.filename,
       isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang,
       selectedModel?.name || null,
-      selectedModel?.provider || null
+      selectedModel?.provider || null,
+      sessionType
     );
   };
 
@@ -290,16 +295,22 @@ export function ImportAudioDialog({
 
                   {/* Editable title */}
                   <div className="space-y-1">
-                    <label className="text-sm font-medium text-gray-700">Meeting Title</label>
+                    <label className="text-sm font-medium text-gray-700">Session title</label>
                     <Input
                       value={title}
                       onChange={(e) => {
                         setTitle(e.target.value);
                         setTitleModifiedByUser(true);
                       }}
-                      placeholder="Enter meeting title"
+                      placeholder="Enter a title"
                     />
                   </div>
+
+                  <SessionTypeSelector
+                    id="import-session-type"
+                    value={sessionType}
+                    onValueChange={setSessionType}
+                  />
 
                   <Button variant="outline" size="sm" onClick={handleSelectFile} className="w-full">
                     Choose Different File

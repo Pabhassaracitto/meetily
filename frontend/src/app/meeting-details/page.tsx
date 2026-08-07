@@ -9,12 +9,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { LoaderIcon } from "lucide-react";
 import { useConfig } from "@/contexts/ConfigContext";
 import { usePaginatedTranscripts } from "@/hooks/usePaginatedTranscripts";
+import { SessionType } from "@/lib/session-types";
 
 interface MeetingDetailsResponse {
   id: string;
   title: string;
   created_at: string;
   updated_at: string;
+  session_type: SessionType;
   transcripts: Transcript[];
   folder_path?: string;
 }
@@ -132,6 +134,7 @@ function MeetingDetailsContent() {
         title: metadata.title,
         created_at: metadata.created_at,
         updated_at: metadata.updated_at,
+        session_type: metadata.session_type,
         transcripts: transcripts, // Paginated transcripts from hook
         folder_path: metadata.folder_path, // For retranscription feature
       });

@@ -1,0 +1,45 @@
+{
+  "name": "Online Class Notes",
+  "description": "Structured learning notes for an online class, lecture, workshop, or study session.",
+  "sections": [
+    {
+      "title": "Class Overview",
+      "instruction": "State the lesson topic, stated learning goals, instructor if mentioned, and the session context. Do not invent missing metadata.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Lesson Outline",
+      "instruction": "List the main sections of the lesson in the order they were taught. Include a timestamp or transcript reference when available.",
+      "format": "list",
+      "item_format": "| **Topic** | **Key idea** | **Transcript reference / timestamp** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Key Concepts & Definitions",
+      "instruction": "List concepts, definitions, formulas, or terminology explicitly explained in the session. Preserve the speaker's wording when it is a definition and flag uncertainty instead of guessing.",
+      "format": "list",
+      "item_format": "| **Concept** | **Explanation from the session** | **Reference** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Questions & Answers",
+      "instruction": "Capture questions raised and the answer given in the session. Do not create an answer when the transcript has no answer.",
+      "format": "list",
+      "item_format": "| **Question** | **Answer / unresolved status** | **Reference** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Examples & Demonstrations",
+      "instruction": "Summarize examples, demonstrations, or worked problems that were actually discussed. Include context needed to understand the example.",
+      "format": "list"
+    },
+    {
+      "title": "Study Tasks & Follow-up",
+      "instruction": "List homework, reading, practice, deadlines, or follow-up only when explicitly assigned or stated. If none were assigned, say that no explicit task was identified.",
+      "format": "list",
+      "item_format": "| **Task** | **Due date if stated** | **Reference** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Items to Verify",
+      "instruction": "List unclear, incomplete, or low-confidence points separately. Do not present them as established facts.",
+      "format": "list"
+    }
+  ]
+}

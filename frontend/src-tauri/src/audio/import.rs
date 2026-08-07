@@ -2,6 +2,7 @@
 
 use crate::api::TranscriptSegment;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
+use crate::database::models::SessionType;
 use crate::audio::vad::get_speech_chunks_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
 use crate::parakeet_engine::ParakeetEngine;
@@ -258,6 +259,7 @@ pub async fn start_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    session_type: Option<String>,
 ) -> Result<ImportResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = ImportGuard::acquire().map_err(|e| anyhow!(e))?;
@@ -265,6 +267,9 @@ pub async fn start_import<R: Runtime>(
     // Reset cancellation flag
     IMPORT_CANCELLED.store(false, Ordering::SeqCst);
 
+    let session_type = SessionType::from_optional(session_type.as_deref())
+        .map_err(|error| anyhow!(error))?
+        .to_string();
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_import(
         app.clone(),
@@ -273,6 +278,7 @@ pub async fn start_import<R: Runtime>(
         language,
         model,
         provider,
+        session_type,
     )
     .await;
 
@@ -315,6 +321,7 @@ async fn run_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    session_type: String,
 ) -> Result<ImportResult> {
     let source = PathBuf::from(&source_path);
 
@@ -324,8 +331,8 @@ async fn run_import<R: Runtime>(
     }
 
     info!(
-        "Starting import for '{}' from {} with language {:?}, model {:?}, provider {:?}",
-        title, source_path, language, model, provider
+        "Starting import for '{}' from {} with session_type {}, language {:?}, model {:?}, provider {:?}",
+        title, source_path, session_type, language, model, provider
     );
 
     // Determine which provider to use (default to whisper)
@@ -642,6 +649,7 @@ async fn run_import<R: Runtime>(
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
+        &session_type,
     )
     .await?;
 
@@ -659,6 +667,7 @@ async fn run_import<R: Runtime>(
         duration_seconds,
         &dest_filename,
         "import",
+        &session_type,
     ) {
         warn!("Failed to write metadata.json: {}", e);
     }
@@ -692,6 +701,7 @@ async fn create_meeting_with_transcripts(
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
+    session_type: &str,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -704,14 +714,15 @@ async fn create_meeting_with_transcripts(
 
     // Insert meeting
     sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path)
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, session_type)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&meeting_id)
     .bind(title)
     .bind(now)
     .bind(now)
     .bind(&folder_path)
+    .bind(session_type)
     .execute(&mut *tx)
     .await
     .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
@@ -883,6 +894,7 @@ fn write_import_metadata(
     duration_seconds: f64,
     audio_filename: &str,
     source: &str,
+    session_type: &str,
 ) -> Result<()> {
     let metadata_path = folder.join("metadata.json");
     let temp_path = folder.join(".metadata.json.tmp");
@@ -898,7 +910,8 @@ fn write_import_metadata(
         "audio_file": audio_filename,
         "transcript_file": "transcripts.json",
         "status": "completed",
-        "source": source
+        "source": source,
+        "session_type": session_type
     });
 
     let json_string = serde_json::to_string_pretty(&json)?;
@@ -968,6 +981,7 @@ pub async fn start_import_audio_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    session_type: Option<String>,
 ) -> Result<ImportStarted, String> {
     // Check if import is already in progress (guard will be acquired in start_import)
     if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
@@ -976,7 +990,16 @@ pub async fn start_import_audio_command<R: Runtime>(
 
     // Spawn import in background
     tauri::async_runtime::spawn(async move {
-        let result = start_import(app, source_path, title, language, model, provider).await;
+        let result = start_import(
+            app,
+            source_path,
+            title,
+            language,
+            model,
+            provider,
+            session_type,
+        )
+        .await;
 
         if let Err(e) = result {
             error!("Import failed: {}", e);
@@ -1223,6 +1246,7 @@ mod tests {
             1800.0,
             "audio.mp4",
             "import",
+            "online_class",
         );
         assert!(result.is_ok(), "write_import_metadata failed: {:?}", result);
 
@@ -1238,6 +1262,7 @@ mod tests {
         assert_eq!(parsed["audio_file"], "audio.mp4");
         assert_eq!(parsed["status"], "completed");
         assert_eq!(parsed["source"], "import");
+        assert_eq!(parsed["session_type"], "online_class");
     }
 
     /// Integration test that decodes a real audio file and runs VAD.

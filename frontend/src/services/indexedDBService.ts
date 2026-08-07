@@ -4,15 +4,17 @@
  * to enable recovery after app crashes or unexpected closures.
  */
 
+import type { SessionType } from '@/lib/session-types';
+
 // Database schema interfaces
-export interface MeetingMetadata {
-  meetingId: string;          // Primary key: "meeting-{timestamp}"
+export interface MeetingMetadata {  meetingId: string;          // Primary key: "meeting-{timestamp}"
   title: string;              // Meeting title
   startTime: number;          // Unix timestamp (ms)
   lastUpdated: number;        // Unix timestamp (ms)
   transcriptCount: number;    // Number of transcript segments
   savedToSQLite: boolean;     // Flag: saved to backend DB
   folderPath?: string;        // Path to recording folder
+  sessionType?: SessionType;  // Session purpose captured at start; optional for legacy recovery rows
 }
 
 export interface StoredTranscript {

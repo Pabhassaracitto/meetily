@@ -48,6 +48,8 @@ Một bản Pro tốt không chỉ “tạo tóm tắt đẹp”; nó phải cho
 
 ## 3. Quyết định kiến trúc cần chốt ở Milestone 0
 
+Các lựa chọn đã chốt sau kickoff được ghi tại [DECISIONS.md](./DECISIONS.md). Pro sẽ phát triển open source trong repo này, ưu tiên Pro Core cho lớp học/pháp thoại, local mặc định với cloud opt-in, và generic TTS trước voice cloning.
+
 ### 3.1 Phân phối Pro và mã nguồn MIT
 
 README hiện công bố repo theo MIT. Bất kỳ mã Pro nào commit vào repo MIT sẽ có thể được tái sử dụng theo giấy phép đó. Vì vậy cần chốt một trong hai phương án trước khi viết entitlement/licensing:
@@ -129,6 +131,7 @@ Các con số dưới đây là **mục tiêu để benchmark xác nhận**, kh�
 
 ## 8. Tài liệu thực thi
 
+- [Quyết định đã chốt](./DECISIONS.md)
 - [Milestones / roadmap](./MILESTONES.md)
 - [Kanban khởi tạo](./KANBAN.md)
 - [Handoff kỹ thuật, data model, risk và first sprint](./HANDOFF.md)

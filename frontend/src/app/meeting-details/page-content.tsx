@@ -17,6 +17,7 @@ import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
 import { useConfig } from '@/contexts/ConfigContext';
+import { getDefaultTemplateForSessionType } from '@/lib/session-types';
 
 export default function PageContent({
   meeting,
@@ -69,7 +70,7 @@ export default function PageContent({
 
   // Custom hooks
   const meetingData = useMeetingData({ meeting, summaryData, onMeetingUpdated });
-  const templates = useTemplates();
+  const templates = useTemplates(getDefaultTemplateForSessionType(meeting.session_type));
 
   // Callback to register the modal open function
   const handleRegisterModalOpen = (openFn: () => void) => {

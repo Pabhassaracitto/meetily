@@ -7,11 +7,13 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { Transcript } from '@/types';
+import { SessionType } from '@/lib/session-types';
 
 export interface SaveMeetingRequest {
   meetingTitle: string;
   transcripts: Transcript[];
   folderPath: string | null;
+  sessionType: SessionType;
 }
 
 export interface SaveMeetingResponse {
@@ -34,17 +36,20 @@ export class StorageService {
    * @param meetingTitle - Title of the meeting
    * @param transcripts - Array of transcript segments
    * @param folderPath - Optional folder path for audio file
+   * @param sessionType - The purpose of the captured session
    * @returns Promise with { meeting_id: string }
    */
   async saveMeeting(
     meetingTitle: string,
     transcripts: Transcript[],
-    folderPath: string | null
+    folderPath: string | null,
+    sessionType: SessionType = 'meeting'
   ): Promise<SaveMeetingResponse> {
     return invoke<SaveMeetingResponse>('api_save_transcript', {
       meetingTitle,
       transcripts,
       folderPath,
+      sessionType,
     });
   }
 

@@ -3,13 +3,19 @@ import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
-export function useTemplates() {
+export function useTemplates(defaultTemplateId: string = 'standard_meeting') {
   const [availableTemplates, setAvailableTemplates] = useState<Array<{
     id: string;
     name: string;
     description: string;
   }>>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('standard_meeting');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(defaultTemplateId);
+
+  // Change the default only when the session mode changes. A manual selection
+  // remains active while the user works within the same session.
+  useEffect(() => {
+    setSelectedTemplate(defaultTemplateId);
+  }, [defaultTemplateId]);
 
   // Fetch available templates on mount
   useEffect(() => {

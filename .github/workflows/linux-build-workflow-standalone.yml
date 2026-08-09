@@ -96,7 +96,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.15.9
           run_install: false
 
       - name: Setup Node
@@ -176,7 +176,11 @@ jobs:
       - name: Install frontend dependencies and type-check
         working-directory: frontend
         run: |
-          pnpm install --frozen-lockfile
+          # Temporary manual-workflow compatibility: this lets the Beta build
+          # run even before the repository's legacy lockfile is regenerated
+          # with pnpm 9. Commit the regenerated lockfile before enabling a
+          # frozen production/PR workflow.
+          pnpm install --no-frozen-lockfile
           pnpm exec tsc --noEmit
 
       - name: Build llama-helper sidecar

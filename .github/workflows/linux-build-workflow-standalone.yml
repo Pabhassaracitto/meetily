@@ -1,0 +1,239 @@
+# PASTE THIS ENTIRE FILE into .github/workflows/Build_Linux_Beta.yml in GitHub's web editor.
+# It is intentionally self-contained: it does not depend on a composite action
+# or the tauri.linux-beta.conf.json file already being in the repository.
+
+name: "Build and Test - Linux"
+
+on:
+  workflow_dispatch:
+    inputs:
+      build-type:
+        description: "Build type"
+        required: true
+        type: choice
+        options: [debug, release]
+        default: debug
+      ubuntu-version:
+        description: "Ubuntu runner"
+        required: true
+        type: choice
+        options: [ubuntu-22.04, ubuntu-24.04]
+        default: ubuntu-22.04
+      bundle-type:
+        description: "Bundle type (all = DEB + AppImage)"
+        required: true
+        type: choice
+        options: [deb, appimage, rpm, all]
+        default: deb
+      sign-build:
+        description: "Sign updater artifacts (requires valid Minisign secrets)"
+        required: true
+        type: boolean
+        default: false
+      upload-artifacts:
+        description: "Upload build artifacts"
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  NO_STRIP: true
+  # Keep host AVX/AVX2 available. OpenBLAS is the portable CPU fallback.
+
+jobs:
+  build-linux:
+    name: Linux x86_64 (${{ inputs['ubuntu-version'] }})
+    runs-on: ${{ inputs['ubuntu-version'] }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build settings
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs['bundle-type'] }}" in
+            all) BUNDLES="deb,appimage" ;;
+            deb|appimage|rpm) BUNDLES="${{ inputs['bundle-type'] }}" ;;
+            *) echo "Unsupported bundle type" >&2; exit 1 ;;
+          esac
+
+          PROFILE="release"
+          ARGS="--bundles $BUNDLES"
+          if [[ "${{ inputs['build-type'] }}" == "debug" ]]; then
+            PROFILE="debug"
+            ARGS="--debug $ARGS"
+          fi
+
+          if [[ "${{ inputs['sign-build'] }}" != "true" ]]; then
+            ARGS="$ARGS --config src-tauri/tauri.linux-beta.conf.json --no-sign"
+          fi
+
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+          echo "bundles=$BUNDLES" >> "$GITHUB_OUTPUT"
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: linux-${{ inputs['ubuntu-version'] }}-x86_64-openblas
+
+      - name: Install Linux desktop and audio dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          packages=(
+            build-essential pkg-config libasound2-dev libopenblas-dev libssl-dev
+            librsvg2-dev patchelf libx11-dev libxtst-dev libxrandr-dev libpulse-dev
+          )
+
+          if apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+            packages+=(libwebkit2gtk-4.1-dev)
+          else
+            packages+=(libwebkit2gtk-4.0-dev)
+          fi
+
+          if apt-cache show libayatana-appindicator3-dev >/dev/null 2>&1; then
+            packages+=(libayatana-appindicator3-dev)
+          else
+            packages+=(libappindicator3-dev)
+          fi
+
+          if apt-cache show libpipewire-0.3-dev >/dev/null 2>&1; then
+            packages+=(libpipewire-0.3-dev)
+          fi
+
+          if [[ "${{ inputs['bundle-type'] }}" == "all" || "${{ inputs['bundle-type'] }}" == "appimage" ]]; then
+            if apt-cache show libfuse2 >/dev/null 2>&1; then
+              packages+=(fuse libfuse2)
+            elif apt-cache show libfuse2t64 >/dev/null 2>&1; then
+              packages+=(fuse3 libfuse2t64)
+            fi
+          fi
+
+          if [[ "${{ inputs['bundle-type'] }}" == "rpm" ]]; then
+            packages+=(rpm)
+          fi
+
+          sudo apt-get install -y "${packages[@]}"
+          test -z "${WHISPER_NO_AVX:-}"
+          test -z "${WHISPER_NO_AVX2:-}"
+          pkg-config --modversion openblas
+
+      - name: Prepare unsigned Beta Tauri config
+        if: inputs['sign-build'] != true
+        shell: bash
+        run: |
+          cat > frontend/src-tauri/tauri.linux-beta.conf.json <<'EOF'
+          {
+            "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+            "bundle": {
+              "createUpdaterArtifacts": false
+            }
+          }
+          EOF
+
+      - name: Install frontend dependencies and type-check
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec tsc --noEmit
+
+      - name: Build llama-helper sidecar
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo build --release -p llama-helper
+          mkdir -p frontend/src-tauri/binaries
+          cp target/release/llama-helper \
+            frontend/src-tauri/binaries/llama-helper-x86_64-unknown-linux-gnu
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # Only used when sign-build=true. It must be a raw Minisign secret
+          # key including its `untrusted comment:` line, not a public key/base64.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs['sign-build'] && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs['sign-build'] && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          MEETILY_RSA_PUBLIC_KEY: ${{ secrets.MEETILY_RSA_PUBLIC_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        with:
+          projectPath: frontend
+          args: --target x86_64-unknown-linux-gnu --features openblas ${{ steps.build.outputs.args }}
+
+      - name: Verify packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT="target/x86_64-unknown-linux-gnu/${{ steps.build.outputs.profile }}/bundle"
+          find "$ROOT" -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' \)
+
+          if [[ "${{ steps.build.outputs.bundles }}" == *"deb"* ]]; then
+            DEB=$(find "$ROOT/deb" -name '*.deb' -print -quit)
+            test -n "$DEB"
+            dpkg-deb --info "$DEB"
+          fi
+          if [[ "${{ steps.build.outputs.bundles }}" == *"appimage"* ]]; then
+            APPIMAGE=$(find "$ROOT/appimage" -name '*.AppImage' -print -quit)
+            test -n "$APPIMAGE"
+            chmod +x "$APPIMAGE"
+            APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGE" --appimage-help || true
+          fi
+          if [[ "${{ steps.build.outputs.bundles }}" == *"rpm"* ]]; then
+            RPM=$(find "$ROOT/rpm" -name '*.rpm' -print -quit)
+            test -n "$RPM"
+            rpm -qip "$RPM"
+          fi
+
+      - name: Upload artifacts
+        if: ${{ always() && inputs['upload-artifacts'] }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: meetily-linux-x64-${{ steps.build.outputs.profile }}-${{ steps.version.outputs.version }}
+          path: |
+            target/x86_64-unknown-linux-gnu/${{ steps.build.outputs.profile }}/bundle/deb/*.deb
+            target/x86_64-unknown-linux-gnu/${{ steps.build.outputs.profile }}/bundle/appimage/*.AppImage
+            target/x86_64-unknown-linux-gnu/${{ steps.build.outputs.profile }}/bundle/rpm/*.rpm
+          if-no-files-found: warn
+          retention-days: 30

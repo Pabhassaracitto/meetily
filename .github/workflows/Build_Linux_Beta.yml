@@ -1,0 +1,80 @@
+name: Setup Linux desktop build dependencies
+description: Install repeatable Tauri, audio, OpenBLAS, PipeWire/PulseAudio and optional package-verification dependencies.
+
+inputs:
+  include-fuse:
+    description: Install FUSE compatibility packages for AppImage checks.
+    required: false
+    default: "true"
+  include-rpm:
+    description: Install rpm for RPM metadata verification.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install desktop and audio dependencies
+      shell: bash
+      run: |
+        set -euxo pipefail
+
+        sudo apt-get update
+
+        packages=(
+          build-essential
+          pkg-config
+          libasound2-dev
+          libopenblas-dev
+          libssl-dev
+          librsvg2-dev
+          patchelf
+          libx11-dev
+          libxtst-dev
+          libxrandr-dev
+          libpulse-dev
+        )
+
+        # Tauri/WebKit package names differ between Ubuntu 22.04 and 24.04.
+        if apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+          packages+=(libwebkit2gtk-4.1-dev)
+        else
+          packages+=(libwebkit2gtk-4.0-dev)
+        fi
+
+        # App-indicator package names also differ by distribution release.
+        if apt-cache show libayatana-appindicator3-dev >/dev/null 2>&1; then
+          packages+=(libayatana-appindicator3-dev)
+        else
+          packages+=(libappindicator3-dev)
+        fi
+
+        # PipeWire headers are available on current Ubuntu runners. Do not fail
+        # a build on an older image that omits this optional development package.
+        if apt-cache show libpipewire-0.3-dev >/dev/null 2>&1; then
+          packages+=(libpipewire-0.3-dev)
+        fi
+
+        if [[ "${{ inputs.include-fuse }}" == "true" ]]; then
+          if apt-cache show libfuse2 >/dev/null 2>&1; then
+            packages+=(fuse libfuse2)
+          elif apt-cache show libfuse2t64 >/dev/null 2>&1; then
+            packages+=(fuse3 libfuse2t64)
+          fi
+        fi
+
+        if [[ "${{ inputs.include-rpm }}" == "true" ]]; then
+          packages+=(rpm)
+        fi
+
+        sudo apt-get install -y "${packages[@]}"
+
+    - name: Verify Linux acceleration policy
+      shell: bash
+      run: |
+        set -euxo pipefail
+        # Do not disable AVX/AVX2 globally. Host CPU capabilities remain
+        # available while OpenBLAS provides the portable optimized fallback.
+        test -z "${WHISPER_NO_AVX:-}"
+        test -z "${WHISPER_NO_AVX2:-}"
+        pkg-config --modversion openblas

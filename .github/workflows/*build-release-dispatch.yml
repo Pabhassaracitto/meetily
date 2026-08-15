@@ -1,0 +1,172 @@
+# COPY TO: .github/workflows/build-release-dispatch.yml
+# Manual UI for Windows, Linux, or both. It calls build-desktop-platform.yml.
+
+name: "Build / Release Desktop"
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platform selection"
+        required: true
+        type: choice
+        options: [windows, linux, both]
+        default: both
+      ref:
+        description: "Branch, tag, or commit SHA to build (empty = selected workflow branch)"
+        required: false
+        type: string
+        default: ""
+      version:
+        description: "Version override, e.g. 0.4.1 (empty = tauri.conf.json version)"
+        required: false
+        type: string
+        default: ""
+      build-type:
+        description: "Build type"
+        required: true
+        type: choice
+        options: [debug, release]
+        default: release
+      linux-bundles:
+        description: "Linux bundles"
+        required: true
+        type: choice
+        options: [beta, deb, appimage, rpm]
+        default: beta
+      sign-binaries:
+        description: "Code/update signing (requires valid DigiCert/Minisign secrets)"
+        required: true
+        type: boolean
+        default: false
+      create-release:
+        description: "Create a GitHub draft release and attach build artifacts"
+        required: true
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the GitHub release as prerelease"
+        required: true
+        type: boolean
+        default: true
+      upload-artifacts:
+        description: "Upload workflow artifacts"
+        required: true
+        type: boolean
+        default: true
+      lockfile-mode:
+        description: "Dependency install mode (refresh is safest for temporary manual CI fixes)"
+        required: true
+        type: choice
+        options: [refresh, frozen]
+        default: refresh
+
+concurrency:
+  group: build-release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      ref: ${{ steps.values.outputs.ref }}
+      version: ${{ steps.values.outputs.version }}
+      release-id: ${{ steps.release.outputs.release-id }}
+      linux-bundles: ${{ steps.values.outputs.linux-bundles }}
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve ref, version, and Linux bundles
+        id: values
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.ref != '' && inputs.ref || github.ref }}"
+          VERSION="${{ inputs.version }}"
+          if [[ -z "$VERSION" ]]; then
+            VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $VERSION" >&2
+            exit 1
+          fi
+          case "${{ inputs.linux-bundles }}" in
+            beta) LINUX_BUNDLES="deb,appimage" ;;
+            deb|appimage|rpm) LINUX_BUNDLES="${{ inputs.linux-bundles }}" ;;
+            *) exit 1 ;;
+          esac
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "linux-bundles=$LINUX_BUNDLES" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: release
+        if: inputs.create-release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${{ steps.values.outputs.version }}`,
+              name: `Meetily v${{ steps.values.outputs.version }}`,
+              draft: true,
+              prerelease: ${{ inputs.prerelease }},
+              generate_release_notes: true,
+              target_commitish: '${{ steps.values.outputs.ref }}'
+            });
+            core.setOutput('release-id', String(data.id));
+
+  build-windows:
+    needs: prepare
+    if: inputs.platforms == 'windows' || inputs.platforms == 'both'
+    uses: ./.github/workflows/build-desktop-platform.yml
+    with:
+      platform: windows
+      ref: ${{ needs.prepare.outputs.ref }}
+      version: ${{ needs.prepare.outputs.version }}
+      build-type: ${{ inputs.build-type }}
+      bundles: msi,nsis
+      sign-binaries: ${{ inputs.sign-binaries }}
+      upload-artifacts: ${{ inputs.upload-artifacts }}
+      release-id: ${{ needs.prepare.outputs.release-id }}
+      lockfile-mode: ${{ inputs.lockfile-mode }}
+      asset-prefix: meetily
+    secrets: inherit
+
+  build-linux:
+    needs: prepare
+    if: inputs.platforms == 'linux' || inputs.platforms == 'both'
+    uses: ./.github/workflows/build-desktop-platform.yml
+    with:
+      platform: linux
+      ref: ${{ needs.prepare.outputs.ref }}
+      version: ${{ needs.prepare.outputs.version }}
+      build-type: ${{ inputs.build-type }}
+      bundles: ${{ needs.prepare.outputs.linux-bundles }}
+      sign-binaries: ${{ inputs.sign-binaries }}
+      upload-artifacts: ${{ inputs.upload-artifacts }}
+      release-id: ${{ needs.prepare.outputs.release-id }}
+      lockfile-mode: ${{ inputs.lockfile-mode }}
+      asset-prefix: meetily
+    secrets: inherit
+
+  summary:
+    needs: [prepare, build-windows, build-linux]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write summary
+        run: |
+          echo "## Desktop Build / Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: ${{ needs.prepare.outputs.ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: ${{ needs.prepare.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Windows: ${{ needs.build-windows.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Linux: ${{ needs.build-linux.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Draft release ID: ${{ needs.prepare.outputs.release-id || 'not requested' }}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,7 @@
 # COPY TO: .github/workflows/build-desktop-platform.yml
 # Called only by build-release-dispatch.yml. Supports Windows or Linux x86_64.
 
-name: "*Build Desktop Platform"
+name: "Build Desktop Platform"
 
 on:
   workflow_call:

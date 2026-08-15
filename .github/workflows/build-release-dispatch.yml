@@ -97,8 +97,15 @@ jobs:
           if [[ -z "$VERSION" ]]; then
             VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
           fi
+
+          # Accept convenient MAJOR.MINOR input in the dispatch form and turn
+          # it into the SemVer MAJOR.MINOR.PATCH required by Tauri bundles.
+          VERSION="${VERSION#v}"
+          if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0"
+          fi
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version: $VERSION" >&2
+            echo "Invalid version: $VERSION. Use 0.1, 0.1.0, or 0.1.0-beta.1" >&2
             exit 1
           fi
           case "${{ inputs.linux-bundles }}" in

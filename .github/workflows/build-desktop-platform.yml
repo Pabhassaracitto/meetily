@@ -1,0 +1,267 @@
+# COPY TO: .github/workflows/build-desktop-platform.yml
+# Called only by build-release-dispatch.yml. Supports Windows or Linux x86_64.
+
+name: "*Build Desktop Platform*"
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string # windows | linux
+      ref:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      build-type:
+        required: true
+        type: string # debug | release
+      bundles:
+        required: true
+        type: string
+      sign-binaries:
+        required: true
+        type: boolean
+      upload-artifacts:
+        required: true
+        type: boolean
+      release-id:
+        required: false
+        type: string
+        default: ""
+      lockfile-mode:
+        required: true
+        type: string # frozen | refresh
+      asset-prefix:
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: ${{ inputs.platform }} x86_64 (${{ inputs.build-type }})
+    runs-on: ${{ inputs.platform == 'windows' && 'windows-latest' || 'ubuntu-22.04' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Apply version override in this runner only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.BUILD_VERSION;
+          for (const file of ['frontend/package.json', 'frontend/src-tauri/tauri.conf.json']) {
+            const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+            json.version = version;
+            fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+          }
+          NODE
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ inputs.platform == 'windows' && 'x86_64-pc-windows-msvc' || 'x86_64-unknown-linux-gnu' }}
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: desktop-${{ inputs.platform }}-x86_64-${{ inputs.build-type }}
+
+      - name: Install Linux desktop/audio dependencies
+        if: inputs.platform == 'linux'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          packages=(
+            build-essential pkg-config libasound2-dev libopenblas-dev libssl-dev
+            librsvg2-dev patchelf libx11-dev libxtst-dev libxrandr-dev libpulse-dev
+          )
+          if apt-cache show libwebkit2gtk-4.1-dev >/dev/null 2>&1; then
+            packages+=(libwebkit2gtk-4.1-dev)
+          else
+            packages+=(libwebkit2gtk-4.0-dev)
+          fi
+          if apt-cache show libayatana-appindicator3-dev >/dev/null 2>&1; then
+            packages+=(libayatana-appindicator3-dev)
+          else
+            packages+=(libappindicator3-dev)
+          fi
+          if apt-cache show libpipewire-0.3-dev >/dev/null 2>&1; then
+            packages+=(libpipewire-0.3-dev)
+          fi
+          if [[ "${{ inputs.bundles }}" == *"appimage"* ]]; then
+            if apt-cache show libfuse2 >/dev/null 2>&1; then
+              packages+=(fuse libfuse2)
+            elif apt-cache show libfuse2t64 >/dev/null 2>&1; then
+              packages+=(fuse3 libfuse2t64)
+            fi
+          fi
+          if [[ "${{ inputs.bundles }}" == *"rpm"* ]]; then packages+=(rpm); fi
+          sudo apt-get install -y "${packages[@]}"
+          test -z "${WHISPER_NO_AVX:-}"
+          test -z "${WHISPER_NO_AVX2:-}"
+
+      - name: Install and configure Vulkan SDK
+        if: inputs.platform == 'windows'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Prepare DigiCert KeyLocker signing
+        if: inputs.platform == 'windows' && inputs.sign-binaries
+        shell: pwsh
+        env:
+          SM_HOST_VALUE: ${{ secrets.SM_HOST }}
+          SM_API_KEY_VALUE: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64_VALUE: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD_VALUE: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CODE_SIGNING_CERT_SHA1_HASH_VALUE: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
+        run: |
+          $required = @{
+            SM_HOST = $env:SM_HOST_VALUE
+            SM_API_KEY = $env:SM_API_KEY_VALUE
+            SM_CLIENT_CERT_FILE_B64 = $env:SM_CLIENT_CERT_FILE_B64_VALUE
+            SM_CLIENT_CERT_PASSWORD = $env:SM_CLIENT_CERT_PASSWORD_VALUE
+            SM_CODE_SIGNING_CERT_SHA1_HASH = $env:SM_CODE_SIGNING_CERT_SHA1_HASH_VALUE
+          }
+          foreach ($entry in $required.GetEnumerator()) {
+            if ([string]::IsNullOrWhiteSpace($entry.Value)) {
+              Write-Error "Missing required DigiCert secret: $($entry.Key)"
+              exit 1
+            }
+          }
+
+          "SM_HOST=$env:SM_HOST_VALUE" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "SM_API_KEY=$env:SM_API_KEY_VALUE" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD_VALUE" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "SM_CODE_SIGNING_CERT_SHA1_HASH=$env:SM_CODE_SIGNING_CERT_SHA1_HASH_VALUE" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\digicert.p12", [Convert]::FromBase64String($env:SM_CLIENT_CERT_FILE_B64_VALUE))
+          "SM_CLIENT_CERT_FILE=$env:RUNNER_TEMP\digicert.p12" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Authenticate DigiCert KeyLocker
+        if: inputs.platform == 'windows' && inputs.sign-binaries
+        uses: digicert/ssm-code-signing@v1.1.1
+
+      - name: Sync DigiCert certificate
+        if: inputs.platform == 'windows' && inputs.sign-binaries
+        shell: pwsh
+        run: |
+          $keypairOutput = smctl keypair ls 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "DigiCert KeyLocker rejected SM_HOST/SM_API_KEY (for example HTTP 403 Invalid credentials). Run an unsigned build or rotate/reconfigure the DigiCert credentials."
+            exit $LASTEXITCODE
+          }
+          $alias = [regex]::Match($keypairOutput, 'key_[A-Za-z0-9_-]+').Value
+          if ([string]::IsNullOrWhiteSpace($alias)) {
+            Write-Error "No KeyLocker keypair alias was returned for these credentials."
+            exit 1
+          }
+          smctl windows certsync --keypair-alias $alias
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "DIGICERT_KEYPAIR_ALIAS=$alias" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare unsigned Tauri config
+        if: inputs.sign-binaries != true
+        shell: bash
+        run: |
+          cat > frontend/src-tauri/tauri.ci-unsigned.conf.json <<'EOF'
+          {
+            "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+            "bundle": { "createUpdaterArtifacts": false }
+          }
+          EOF
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        shell: bash
+        run: |
+          if [[ "${{ inputs.lockfile-mode }}" == "refresh" ]]; then
+            pnpm install --no-frozen-lockfile
+          else
+            pnpm install --frozen-lockfile
+          fi
+          pnpm exec tsc --noEmit
+
+      - name: Build llama-helper sidecar
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo build --release -p llama-helper
+          mkdir -p frontend/src-tauri/binaries
+          if [[ "${{ inputs.platform }}" == "windows" ]]; then
+            cp target/release/llama-helper.exe frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
+          else
+            cp target/release/llama-helper frontend/src-tauri/binaries/llama-helper-x86_64-unknown-linux-gnu
+          fi
+
+      - name: Resolve Tauri arguments
+        id: tauri
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="${{ inputs.platform == 'windows' && 'x86_64-pc-windows-msvc' || 'x86_64-unknown-linux-gnu' }}"
+          FEATURES="${{ inputs.platform == 'windows' && '--features vulkan' || '--features openblas' }}"
+          PROFILE_ARGS=""
+          if [[ "${{ inputs.build-type }}" == "debug" ]]; then PROFILE_ARGS="--debug"; fi
+          UNSIGNED_ARGS=""
+          if [[ "${{ inputs.sign-binaries }}" != "true" ]]; then
+            UNSIGNED_ARGS="--config src-tauri/tauri.ci-unsigned.conf.json --no-sign"
+          fi
+          echo "args=--target $TARGET $FEATURES --bundles ${{ inputs.bundles }} $PROFILE_ARGS $UNSIGNED_ARGS" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "profile=${{ inputs.build-type }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          MEETILY_RSA_PUBLIC_KEY: ${{ secrets.MEETILY_RSA_PUBLIC_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        with:
+          projectPath: frontend
+          releaseId: ${{ inputs.release-id }}
+          args: ${{ steps.tauri.outputs.args }}
+
+      - name: Verify and upload artifacts
+        if: ${{ always() && inputs.upload-artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.asset-prefix }}-${{ inputs.platform }}-${{ inputs.build-type }}-${{ inputs.version }}
+          path: |
+            target/${{ steps.tauri.outputs.target }}/${{ steps.tauri.outputs.profile }}/bundle/**/*.deb
+            target/${{ steps.tauri.outputs.target }}/${{ steps.tauri.outputs.profile }}/bundle/**/*.AppImage
+            target/${{ steps.tauri.outputs.target }}/${{ steps.tauri.outputs.profile }}/bundle/**/*.rpm
+            target/${{ steps.tauri.outputs.target }}/${{ steps.tauri.outputs.profile }}/bundle/**/*.msi
+            target/${{ steps.tauri.outputs.target }}/${{ steps.tauri.outputs.profile }}/bundle/**/*.exe
+          if-no-files-found: warn
+          retention-days: 30

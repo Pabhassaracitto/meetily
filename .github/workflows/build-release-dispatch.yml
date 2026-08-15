@@ -65,6 +65,11 @@ concurrency:
   group: build-release-desktop-${{ github.ref }}
   cancel-in-progress: false
 
+# The reusable builder can attach assets to a draft release. A caller may not
+# grant less permission than the nested workflow requests.
+permissions:
+  contents: write
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -126,6 +131,8 @@ jobs:
   build-windows:
     needs: prepare
     if: inputs.platforms == 'windows' || inputs.platforms == 'both'
+    permissions:
+      contents: write
     uses: ./.github/workflows/build-desktop-platform.yml
     with:
       platform: windows
@@ -143,6 +150,8 @@ jobs:
   build-linux:
     needs: prepare
     if: inputs.platforms == 'linux' || inputs.platforms == 'both'
+    permissions:
+      contents: write
     uses: ./.github/workflows/build-desktop-platform.yml
     with:
       platform: linux
